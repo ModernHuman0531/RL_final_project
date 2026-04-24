@@ -25,7 +25,7 @@ make run
 
 ## File Structure
 ```txt
-project/
+sumo_rl/
 ├── nets/          # SUMO + scenario definition
 │   ├── single_intersection/
 │   │    ├── single_intersection.nod.xml
@@ -38,7 +38,7 @@ project/
 ├── env/              
 │   └── sumo_env.py # Turn SUMO into RL problem(MDP)
 │
-├── agent/            # RL method (Learning policy + Constraint)
+├── agents/            # RL method (Learning policy + Constraint)
 │   ├── base_agent.py
 │   └── 
 ├── experiments/     # Training loop
@@ -48,9 +48,6 @@ project/
 ├── settings/
 │   └── view.setting.xml # Display setting file      
 │
-├── models/
-├── Makefile
-├── Dockerfile
 └── README.md
 ```
 ## Net design
