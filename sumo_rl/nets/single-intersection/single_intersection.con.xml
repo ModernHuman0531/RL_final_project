@@ -1,0 +1,14 @@
+<connections>
+    <connection from="n_in" to="s_out"/>
+    <connection from="s_in" to="n_out"/>
+    <connection from="e_in" to="w_out"/>
+    <connection from="w_in" to="e_out"/>
+
+    <!-- Add crossing settings to show in the view -->
+    <crossing node="c" edges="n_in n_out" priority="true" width="1.0"/>
+    <crossing node="c" edges="s_in s_out" priority="true" width="1.0"/>
+    <crossing node="c" edges="e_in e_out" priority="true" width="1.0"/>
+    <crossing node="c" edges="w_in w_out" priority="true" width="1.0"/>
+
+    <!-- Add sidewalk settings to show in the view -->
+</connections>

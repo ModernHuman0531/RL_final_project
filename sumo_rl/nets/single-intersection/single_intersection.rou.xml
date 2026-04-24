@@ -1,0 +1,33 @@
+<routes>
+    <!-- Define the vehicle types -->
+    <vType id="car" accel="2.6" decel="4.5" sigma="0.5" length="5" minGap="2.5" maxSpeed="13.9" guiShape="passenger"/>
+    <vType id="pedestrian" vClass="pedestrian"/>
+    
+    <!-- Define the routes -->
+    <route id="n_to_s" edges="n_in s_out"/>
+    <route id="s_to_n" edges="s_in n_out"/>
+    <route id="e_to_w" edges="e_in w_out"/>
+    <route id="w_to_e" edges="w_in e_out"/>
+
+    <!--Define the vehicles flow-->
+    <flow id="n_to_s_cars" type="car" route="n_to_s" begin="0" end="3600" probability="0.1"/>
+    <flow id="s_to_n_cars" type="car" route="s_to_n" begin="0" end="3600" probability="0.1"/>
+    <flow id="e_to_w_cars" type="car" route="e_to_w" begin="0" end="3600" probability="0.1"/>
+    <flow id="w_to_e_cars" type="car" route="w_to_e" begin="0" end="3600" probability="0.1"/>
+
+
+    <!-- Pedestrian flows -->
+    <personFlow id="n_to_s_pedestrians" type="pedestrian" begin="0" end="3600" probability="0.05">
+        <walk edges="n_in s_out"/>
+    </personFlow>
+    <personFlow id="s_to_n_pedestrians" type="pedestrian" begin="0" end="3600" probability="0.05">
+        <walk edges="s_in n_out"/>
+    </personFlow>
+    <personFlow id="e_to_w_pedestrians" type="pedestrian" begin="0" end="3600" probability="0.05">
+        <walk edges="e_in w_out"/>
+    </personFlow>
+    <personFlow id="w_to_e_pedestrians" type="pedestrian" begin="0" end="3600" probability="0.05">
+        <walk edges="w_in e_out"/>
+    </personFlow>
+
+</routes>

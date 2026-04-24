@@ -1,0 +1,9 @@
+<viewsettings>
+    <!--Show the sidewalk and pedestrian areas -->
+    <scheme name="real world">
+        <delay value="50"/>
+        <viewpoint zoom="600" x="200" y="200"/>
+        <lane show-sidewalks="1" show-crossings="1" show-pedestrians="1"/>
+        <junctions drawFill="1" drawShape="1" showAsNet="1"/>
+    </scheme>
+</viewsettings>

@@ -1,0 +1,21 @@
+<configuration>
+    <input>
+        <net-file value="single_intersection.net.xml"/>
+        <route-files value="single_intersection.rou.xml"/>
+    </input>
+
+    <time>
+        <begin value="0"/>
+        <end value="3600"/>
+    </time>
+    <!--Turn off the log -->
+    <report>
+        <no-step-log value="true"/>
+    </report>
+
+    <!--Include gui-setting to show sidewalks and crossings -->
+    <gui-only>
+        <gui-settings-file value="../../setting/view.setting.xml"/>
+    </gui-only>
+
+</configuration>
