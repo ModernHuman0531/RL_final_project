@@ -237,6 +237,29 @@ class SUMOEnvironment(gym.Env):
         current_time = self.sumo_traci.simulation.getTime()
         return current_time >= self.end_time
 
+    def close(self):
+        """
+        Close the SUMO simulation and clean up resources.
+        Call this at the end of training to properly shut down the traci connection.
+        """
+        if self.sumo_running:
+            self.sumo_traci.close()
+            self.sumo_running = False
+
+    def get_feasible_actions(self):
+        """
+        Get the feasible (valid) actions for all intersections in the current state.
+        Returns a list of lists, where each inner list contains valid actions for that intersection.
+        
+        Returns:
+            List[List[int]]: For each intersection, a list of valid action indices [0, 1, ...].
+        """
+        feasible_actions = []
+        for signal in self.traffic_signals.values():
+            valid_mask = signal.get_valid_actions()  # Returns [0 or 1, 0 or 1]
+            valid_indices = [i for i, valid in enumerate(valid_mask) if valid == 1]
+            feasible_actions.append(valid_indices)
+        return feasible_actions
     
     
 
