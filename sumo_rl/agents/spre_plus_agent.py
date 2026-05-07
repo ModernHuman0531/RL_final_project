@@ -60,10 +60,12 @@ class SPRePlusAgent:
         action_dim: int = 2,
         num_intersections: int = 1,
         use_scipy: bool = True,
+        state_dim: int = None,
     ):
         self.action_dim = action_dim
         self.num_intersections = num_intersections
         self.use_scipy = use_scipy and _SCIPY_AVAILABLE
+        self.state_dim = state_dim  # if set, slices exactly this many features per signal
         self._policy_fn = None
 
     # ------------------------------------------------------------------
@@ -90,7 +92,8 @@ class SPRePlusAgent:
             np.ndarray of shape (num_intersections,) with safe actions.
         """
         actions = []
-        state_per_signal = len(state) // max(len(traffic_signals), 1)
+        state_per_signal = self.state_dim if self.state_dim is not None \
+                           else len(state) // max(len(traffic_signals), 1)
 
         for i, signal in enumerate(traffic_signals):
             signal_state = state[i * state_per_signal: (i + 1) * state_per_signal]

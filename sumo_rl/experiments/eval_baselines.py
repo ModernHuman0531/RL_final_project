@@ -139,7 +139,8 @@ def main():
         dqn_agent.load(args.model)
         dqn_agent.epsilon = 0.0  # greedy evaluation
 
-        spre_agent = SPRePlusAgent(action_dim=2, num_intersections=1, use_scipy=True)
+        spre_agent = SPRePlusAgent(action_dim=2, num_intersections=1, use_scipy=True,
+                                   state_dim=STATE_DIM_PER_INTERSECTION)
         spre_agent.set_policy(dqn_agent.get_q_fn())
 
         experiments += [
