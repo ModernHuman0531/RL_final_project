@@ -1,0 +1,22 @@
+{
+  "sumo_cfg_file": "sumo_rl/nets/single-intersection/single_intersection.sumocfg",
+  "num_episodes": 100,
+  "num_eval_episodes": 5,
+  "eval_interval": 10,
+  "learning_rate": 0.0003,
+  "gamma": 0.99,
+  "gae_lambda": 0.95,
+  "ppo_clip_epsilon": 0.2,
+  "entropy_coef": 0.01,
+  "value_coef": 0.5,
+  "alpha_vehicle": 1.0,
+  "beta_pedestrian": 1.0,
+  "seed": 42,
+  "output_dir": "./results",
+  "device": "cpu",
+  "delta_time": 1,
+  "yellow_time": 5,
+  "min_green_time": 10,
+  "max_green_time": 60,
+  "sim_end_time": 3600
+}

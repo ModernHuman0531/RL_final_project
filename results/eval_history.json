@@ -1,0 +1,92 @@
+[
+  {
+    "eval_avg_reward": -63649.6,
+    "eval_std_reward": 1097.490701555143,
+    "eval_avg_vehicle_waiting_time": 17.677666666666664,
+    "eval_avg_pedestrian_waiting_time": 0.0027777777777777775,
+    "eval_avg_queue_length": 2.424611111111111,
+    "eval_avg_constraint_violation_rate": 0.0,
+    "episode": 10
+  },
+  {
+    "eval_avg_reward": -59778.2,
+    "eval_std_reward": 792.9475140259915,
+    "eval_avg_vehicle_waiting_time": 16.604111111111113,
+    "eval_avg_pedestrian_waiting_time": 0.0009444444444444445,
+    "eval_avg_queue_length": 2.3035555555555556,
+    "eval_avg_constraint_violation_rate": 0.0,
+    "episode": 20
+  },
+  {
+    "eval_avg_reward": -59868.4,
+    "eval_std_reward": 997.2537490528675,
+    "eval_avg_vehicle_waiting_time": 16.629111111111108,
+    "eval_avg_pedestrian_waiting_time": 0.001,
+    "eval_avg_queue_length": 2.3063333333333333,
+    "eval_avg_constraint_violation_rate": 0.0,
+    "episode": 30
+  },
+  {
+    "eval_avg_reward": -59721.4,
+    "eval_std_reward": 285.7562597739549,
+    "eval_avg_vehicle_waiting_time": 16.587777777777777,
+    "eval_avg_pedestrian_waiting_time": 0.0015,
+    "eval_avg_queue_length": 2.301555555555556,
+    "eval_avg_constraint_violation_rate": 0.0,
+    "episode": 40
+  },
+  {
+    "eval_avg_reward": -59749.4,
+    "eval_std_reward": 526.0097337502415,
+    "eval_avg_vehicle_waiting_time": 16.595333333333333,
+    "eval_avg_pedestrian_waiting_time": 0.0017222222222222222,
+    "eval_avg_queue_length": 2.303888888888889,
+    "eval_avg_constraint_violation_rate": 0.0,
+    "episode": 50
+  },
+  {
+    "eval_avg_reward": -58892.4,
+    "eval_std_reward": 465.488388684401,
+    "eval_avg_vehicle_waiting_time": 16.35761111111111,
+    "eval_avg_pedestrian_waiting_time": 0.001388888888888889,
+    "eval_avg_queue_length": 2.282,
+    "eval_avg_constraint_violation_rate": 0.0,
+    "episode": 60
+  },
+  {
+    "eval_avg_reward": -59204.8,
+    "eval_std_reward": 423.49847697482926,
+    "eval_avg_vehicle_waiting_time": 16.444666666666667,
+    "eval_avg_pedestrian_waiting_time": 0.0011111111111111111,
+    "eval_avg_queue_length": 2.289611111111111,
+    "eval_avg_constraint_violation_rate": 0.0,
+    "episode": 70
+  },
+  {
+    "eval_avg_reward": -58918.8,
+    "eval_std_reward": 487.4371344081204,
+    "eval_avg_vehicle_waiting_time": 16.365555555555556,
+    "eval_avg_pedestrian_waiting_time": 0.0007777777777777777,
+    "eval_avg_queue_length": 2.282722222222222,
+    "eval_avg_constraint_violation_rate": 0.0,
+    "episode": 80
+  },
+  {
+    "eval_avg_reward": -59514.2,
+    "eval_std_reward": 223.9539238325598,
+    "eval_avg_vehicle_waiting_time": 16.530277777777776,
+    "eval_avg_pedestrian_waiting_time": 0.0014444444444444446,
+    "eval_avg_queue_length": 2.2984444444444443,
+    "eval_avg_constraint_violation_rate": 0.0,
+    "episode": 90
+  },
+  {
+    "eval_avg_reward": -59597.2,
+    "eval_std_reward": 432.9763965853104,
+    "eval_avg_vehicle_waiting_time": 16.55361111111111,
+    "eval_avg_pedestrian_waiting_time": 0.0011666666666666668,
+    "eval_avg_queue_length": 2.299,
+    "eval_avg_constraint_violation_rate": 0.0,
+    "episode": 100
+  }
+]

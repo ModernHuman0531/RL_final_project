@@ -107,7 +107,7 @@ class TrafficSignalEnv:
         path = self.transition[(self.current_green_phase, target_phase)]
         self.is_transitioning = True
         self.current_green_phase = target_phase
-        self.transition_queue = path
+        self.transition_queue = list(path)  # copy so pop() doesn't mutate self.transition
         self.phase_timer = 0 # Get into the first transition phase in the next update call, so we set the timer to 0 here.
     
     def update(self):

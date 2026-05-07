@@ -60,13 +60,14 @@ class SUMOEnvironment(gym.Env):
         self.intersection_num = 0
         
 
-        # Define the action space and obervation space for the environment.
-        self.action_space = spaces.MultiDiscrete([2] * self.intersection_num) # Each traffic signal has 2 actions: 0 for NS green, 1 for EW green.
+        # Placeholder spaces — redefined in reset() once SUMO reveals the real
+        # intersection count. Using 1 here avoids a shape=(0,) invalid space.
+        self.action_space = spaces.MultiDiscrete([2])
         self.observation_space = spaces.Box(
-            low = 0,
-            high = 1, # Cause we normalize the queue length to [0,1]
-            shape = (self.intersection_num * (11)),
-            dtype = np.float32
+            low=0,
+            high=1,
+            shape=(11,),
+            dtype=np.float32
         )
     
     def _build_traffic_signals(self):
@@ -188,9 +189,18 @@ class SUMOEnvironment(gym.Env):
         self.start_sumo()
         self.traffic_signal_ids = list(self.sumo_traci.trafficlight.getIDList())
         self.traffic_signals = self._build_traffic_signals()
-        state = self.get_state()
         self.intersection_num = len(self.traffic_signals)
 
+        # Redefine spaces now that the real intersection count is known.
+        self.action_space = spaces.MultiDiscrete([2] * self.intersection_num)
+        self.observation_space = spaces.Box(
+            low=0,
+            high=1,
+            shape=(self.intersection_num * 11,),
+            dtype=np.float32
+        )
+
+        state = self.get_state()
         return state, {}
         
         
@@ -227,6 +237,29 @@ class SUMOEnvironment(gym.Env):
         current_time = self.sumo_traci.simulation.getTime()
         return current_time >= self.end_time
 
+    def close(self):
+        """
+        Close the SUMO simulation and clean up resources.
+        Call this at the end of training to properly shut down the traci connection.
+        """
+        if self.sumo_running:
+            self.sumo_traci.close()
+            self.sumo_running = False
+
+    def get_feasible_actions(self):
+        """
+        Get the feasible (valid) actions for all intersections in the current state.
+        Returns a list of lists, where each inner list contains valid actions for that intersection.
+        
+        Returns:
+            List[List[int]]: For each intersection, a list of valid action indices [0, 1, ...].
+        """
+        feasible_actions = []
+        for signal in self.traffic_signals.values():
+            valid_mask = signal.get_valid_actions()  # Returns [0 or 1, 0 or 1]
+            valid_indices = [i for i, valid in enumerate(valid_mask) if valid == 1]
+            feasible_actions.append(valid_indices)
+        return feasible_actions
     
     
 
