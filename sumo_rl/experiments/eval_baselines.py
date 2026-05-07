@@ -1,13 +1,17 @@
 """
 Baseline evaluation script — Single Intersection.
 
-Runs Fixed-Time and Max Pressure agents for one episode each and prints a
-comparison table with the metrics from the project proposal:
+Runs Fixed-Time, Max Pressure, SOTL, and (optionally) DQN-AR / SPre+ agents
+for one episode each and prints a comparison table:
   - Average vehicle waiting time  (lower is better)
   - Average queue length          (lower is better)
   - Constraint violation rate     (target: 0%)
   - Total episode reward
+
+DQN-AR and SPre+ require a trained checkpoint.  Pass --model <path> to include
+them; omit it to run only the rule-based baselines.
 """
+import argparse
 import os
 import sys
 import numpy as np
@@ -23,6 +27,8 @@ from sumo_rl.agents.sotl_agent import SOTLAgent
 CFG_FILE = os.path.join(
     os.path.dirname(__file__), "..", "nets", "single-intersection", "single_intersection.sumocfg"
 )
+
+STATE_DIM_PER_INTERSECTION = 11
 
 
 def run_episode(env, agent, get_action):
@@ -80,6 +86,13 @@ def run_episode(env, agent, get_action):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", type=str, default=None,
+                        help="Path to trained DQN-AR checkpoint (.pt). "
+                             "If provided, DQN-AR and SPre+ are also evaluated.")
+    parser.add_argument("--device", type=str, default="cpu")
+    args = parser.parse_args()
+
     env = SUMOEnvironment(
         sumo_cfg_file=CFG_FILE,
         delta_time=1,
@@ -94,8 +107,6 @@ def main():
     sotl_agent = SOTLAgent(kappa=5, num_intersections=1)
 
     # Each entry: (display name, agent, get_action callable)
-    # Lambdas give all agents a uniform (state, signals) interface.
-    # SPre+ is omitted here — it requires a trained policy (see spre_plus_agent.py).
     experiments = [
         (
             "Fixed-Time (30s cycle)",
@@ -113,6 +124,36 @@ def main():
             lambda state, signals: sotl_agent.select_action(signals),
         ),
     ]
+
+    # Add DQN-AR and SPre+ only when a trained checkpoint is available.
+    if args.model is not None:
+        from sumo_rl.agents.base_agent import DQNAgent
+        from sumo_rl.agents.spre_plus_agent import SPRePlusAgent
+
+        dqn_agent = DQNAgent(
+            state_dim=STATE_DIM_PER_INTERSECTION,
+            action_dim=2,
+            num_intersections=1,
+            device=args.device,
+        )
+        dqn_agent.load(args.model)
+        dqn_agent.epsilon = 0.0  # greedy evaluation
+
+        spre_agent = SPRePlusAgent(action_dim=2, num_intersections=1, use_scipy=True)
+        spre_agent.set_policy(dqn_agent.get_q_fn())
+
+        experiments += [
+            (
+                "DQN-AR",
+                dqn_agent,
+                lambda state, signals: dqn_agent.select_action(state, signals),
+            ),
+            (
+                "SPre+ (DQN policy)",
+                spre_agent,
+                lambda state, signals: spre_agent.select_action(state, signals),
+            ),
+        ]
 
     print("\n=== Baseline Evaluation: Single Intersection (1 episode = 3600 steps) ===\n")
 
