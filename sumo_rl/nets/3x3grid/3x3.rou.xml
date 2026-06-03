@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<routes xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://sumo.dlr.de/xsd/routes_file.xsd">
+  <vType id="car" accel="2.6" decel="4.5" sigma="0.5" length="5.0" maxSpeed="13.89" minGap="2.5" guiShape="passenger"/>
+  <vType id="pedestrian" vClass="pedestrian" minGap="0.25" maxSpeed="1.39"/>
+  <flow id="flow_NS" type="car" from="B2B1" to="B1B0" begin="0" end="3600" vehsPerHour="360.0" departLane="best" departSpeed="max"/>
+  <flow id="flow_SN" type="car" from="B0B1" to="B1B2" begin="0" end="3600" vehsPerHour="360.0" departLane="best" departSpeed="max"/>
+  <flow id="flow_EW" type="car" from="C1B1" to="B1A1" begin="0" end="3600" vehsPerHour="360.0" departLane="best" departSpeed="max"/>
+  <flow id="flow_WE" type="car" from="A1B1" to="B1C1" begin="0" end="3600" vehsPerHour="360.0" departLane="best" departSpeed="max"/>
+  <flow id="flow_NE" type="car" from="B2B1" to="B1C1" begin="0" end="3600" vehsPerHour="360.0" departLane="best" departSpeed="max"/>
+  <flow id="flow_SW" type="car" from="B0B1" to="B1A1" begin="0" end="3600" vehsPerHour="360.0" departLane="best" departSpeed="max"/>
+  <flow id="flow_ES" type="car" from="C1B1" to="B1B0" begin="0" end="3600" vehsPerHour="360.0" departLane="best" departSpeed="max"/>
+  <flow id="flow_WN" type="car" from="A1B1" to="B1B2" begin="0" end="3600" vehsPerHour="360.0" departLane="best" departSpeed="max"/>
+  <flow id="flow_NW" type="car" from="B2B1" to="B1A1" begin="0" end="3600" vehsPerHour="360.0" departLane="best" departSpeed="max"/>
+  <flow id="flow_SE" type="car" from="B0B1" to="B1C1" begin="0" end="3600" vehsPerHour="360.0" departLane="best" departSpeed="max"/>
+  <personFlow id="ped_NS" type="pedestrian" begin="0" end="3600" personsPerHour="180.0">
+    <walk from="B2B1" to="B1B0"/>
+  </personFlow>
+  <personFlow id="ped_SN" type="pedestrian" begin="0" end="3600" personsPerHour="180.0">
+    <walk from="B0B1" to="B1B2"/>
+  </personFlow>
+  <personFlow id="ped_EW" type="pedestrian" begin="0" end="3600" personsPerHour="180.0">
+    <walk from="C1B1" to="B1A1"/>
+  </personFlow>
+  <personFlow id="ped_WE" type="pedestrian" begin="0" end="3600" personsPerHour="180.0">
+    <walk from="A1B1" to="B1C1"/>
+  </personFlow>
+</routes>

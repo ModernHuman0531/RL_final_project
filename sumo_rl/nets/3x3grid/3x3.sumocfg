@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <input>
+    <net-file value="3x3.net.xml"/>
+    <route-files value="3x3.rou.xml"/>
+  </input>
+  <time>
+    <begin value="0"/>
+    <end value="3600"/>
+    <step-length value="1"/>
+  </time>
+  <processing>
+    <waiting-time-memory value="10000"/>
+  </processing>
+  <report>
+    <no-step-log value="true"/>
+    <no-warnings value="true"/>
+  </report>
+</configuration>
