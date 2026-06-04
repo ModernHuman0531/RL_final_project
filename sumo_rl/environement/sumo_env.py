@@ -30,7 +30,9 @@ class SUMOEnvironment(gym.Env):
         max_green_time: The maximum duration of the green light.
         begin_time: The start time of the simulation.
         end_time: The end time of the simulation.
+        controlled_tls: A list of traffic light ids that are controlled by the agent. If None, all traffic lights in the simulation will be controlled.
         use_gui: Whether to use the SUMO GUI.
+        enable_pedestrian_safety: Whether use the pedestrian safety constraint, which means that the traffic signal cannot switch to a phase that would endanger pedestrians who are currently crossing the intersection.
     """
     def __init__(
         self,
@@ -41,7 +43,9 @@ class SUMOEnvironment(gym.Env):
         max_green_time: int=60,
         begin_time: int=0,
         end_time: int=3600,
+        controlled_tls: list=None,
         use_gui: bool=False,
+        enable_pedestrian_safety: bool=True
     ):
         self.sumo_cfg_file = sumo_cfg_file
         self.delta_time = delta_time
@@ -51,6 +55,8 @@ class SUMOEnvironment(gym.Env):
         self.begin_time = begin_time
         self.end_time = end_time
         self.use_gui = use_gui
+        self.enable_pedestrian_safety = enable_pedestrian_safety
+        self.controlled_tls = controlled_tls
 
         self.sumo_traci = traci
         self.sumo_running = False
@@ -66,7 +72,7 @@ class SUMOEnvironment(gym.Env):
         self.observation_space = spaces.Box(
             low=0,
             high=1,
-            shape=(11,),
+            shape=(1,),
             dtype=np.float32
         )
     
@@ -87,9 +93,27 @@ class SUMOEnvironment(gym.Env):
                 max_green_time = self.max_green_time,
                 begin_time = self.begin_time,
                 end_time = self.end_time,
-                current_phase = self.sumo_traci.trafficlight.getPhase(intersection_id)
+                current_phase = self.sumo_traci.trafficlight.getPhase(intersection_id),
+                enable_pedestrian_safety = self.enable_pedestrian_safety
             )
         return traffic_signals
+    
+    def _update_spaces(self):
+        """
+        According to the number of intersections and phases to 
+        dynamically set the gym space.
+
+        In this environment(3x3.net.xml + controlled_tls=["B1"]):
+        action_space = MultiDiscrete([4]) # 4 phases for the single intersection
+        observation_space = Box(low=0, high=1, shape=(1,), dtype=np.float32) 
+        4(Green phases) + 1(min_green) + 4(vehicle_queue) + 8(ped_queue) = 17 features for each intersection.
+        """
+        n_actions = [len(signal.green_phases) for signal in self.traffic_signals.values()]
+        self.action_space = spaces.MultiDiscrete(n_actions)
+        total_obs = sum(signal.state_size for signal in self.traffic_signals.values())
+        self.observation_space = spaces.Box(
+            low=0, high=1, shape=(total_obs,), dtype=np.float32
+        )
 
     # ----- Implement calculational functions for reward and state features ----- #
     def calculate_reward(self, alpha=1.0, beta=1.0):
@@ -187,18 +211,14 @@ class SUMOEnvironment(gym.Env):
             self.sumo_running = False
         
         self.start_sumo()
-        self.traffic_signal_ids = list(self.sumo_traci.trafficlight.getIDList())
+        all_tls = list(self.sumo_traci.trafficlight.getIDList())
+        # Apply filter using controlled_tls.
+        self.traffic_signal_ids = ([t for t in all_tls if t in self.controlled_tls]
+                                   if self.controlled_tls is not None else all_tls)
         self.traffic_signals = self._build_traffic_signals()
-        self.intersection_num = len(self.traffic_signals)
 
-        # Redefine spaces now that the real intersection count is known.
-        self.action_space = spaces.MultiDiscrete([2] * self.intersection_num)
-        self.observation_space = spaces.Box(
-            low=0,
-            high=1,
-            shape=(self.intersection_num * 11,),
-            dtype=np.float32
-        )
+
+        self._update_spaces()
 
         state = self.get_state()
         return state, {}
