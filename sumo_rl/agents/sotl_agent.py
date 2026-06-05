@@ -3,71 +3,76 @@ import numpy as np
 
 class SOTLAgent:
     """
-    Self-Organizing Traffic Lights — Gershenson (2004).
+    Self-Organizing Traffic Lights baseline.
 
-    Switches the green phase when the number of vehicles queued on the
-    currently RED lanes reaches or exceeds a threshold kappa, provided the
-    current phase has been active long enough (read directly from the signal's
-    internal phase_timer so it is always in sync with the environment).
-
-    The rule is purely reactive — no learning, no model:
-        switch  if  red_pressure >= kappa  AND  phase_timer >= min_green_time
-        keep    otherwise
-
-    The environment's constraint layer (yellow lock, min/max green) still
-    applies on top, so the agent never produces physically illegal transitions.
-
-    Args:
-        kappa: Vehicle count threshold on red lanes that triggers a switch.
-               Gershenson (2004) uses values in the range 4–10.
-        num_intersections: Number of intersections to control.
+    The controller keeps the current green action until queued vehicles on
+    currently unserved lanes reach kappa and the current green has satisfied
+    min_green_time. When switching, it selects the non-current green action
+    serving the largest queued demand.
     """
 
     def __init__(self, kappa: int = 5, num_intersections: int = 1):
-        self.kappa = kappa
-        self.num_intersections = num_intersections
+        self.kappa = int(kappa)
+        self.num_intersections = int(num_intersections)
 
     def select_action(self, traffic_signals: list) -> np.ndarray:
-        """
-        Args:
-            traffic_signals: List of TrafficSignalEnv objects, one per
-                             intersection. Obtained from
-                             list(env.traffic_signals.values()).
-        Returns:
-            np.ndarray of shape (num_intersections,) with 0 (NS) or 1 (EW).
-        """
         return np.array(
-            [self._select_for_signal(s) for s in traffic_signals],
+            [self._select_for_signal(signal) for signal in traffic_signals],
             dtype=np.int32,
         )
 
     def _select_for_signal(self, signal) -> int:
-        # During yellow transition keep the target green phase — switching now
-        # would conflict with the ongoing transition.
+        current_action = signal.current_green_phase_idx
+
         if signal.is_transitioning:
-            return signal.green_phases.index(signal.current_green_phase)
+            return current_action
 
-        current_action = signal.green_phases.index(signal.current_green_phase)
+        if signal.phase_timer < signal.min_green_time:
+            return current_action
 
-        # Sum halting vehicles on the lanes that are currently RED.
-        red_pressure = 0
+        red_pressure = self._red_pressure(signal, current_action)
+        if red_pressure < self.kappa:
+            return current_action
+
+        return self._best_non_current_action(signal, current_action)
+
+    def _red_pressure(self, signal, current_action: int) -> float:
+        served = set()
+        if hasattr(signal, "get_served_lanes_for_action"):
+            served = set(signal.get_served_lanes_for_action(current_action))
+
+        red_pressure = 0.0
         queues = signal.get_vehicle_queue()
-        for lane, q in zip(signal.lanes, queues):
-            edge = lane.rsplit("_", 1)[0]          # "n_in_1" → "n_in"
-            direction = signal.edge_to_direction.get(edge)
-            if direction is None:
-                continue                            # skip crossing / internal lanes
-            if current_action == 0 and direction in ("E", "W"):   # NS green → EW red
-                red_pressure += q
-            elif current_action == 1 and direction in ("N", "S"): # EW green → NS red
-                red_pressure += q
+        for lane, queue in zip(signal.lanes, queues):
+            if lane not in served:
+                red_pressure += queue
+        return float(red_pressure)
 
-        # Core SOTL rule: switch when red-side pressure is high enough
-        # and the current green phase has been held for at least min_green_time.
-        if red_pressure >= self.kappa and signal.phase_timer >= signal.min_green_time:
-            return 1 - current_action   # switch to other phase
-        return current_action           # keep current phase
+    def _best_non_current_action(self, signal, current_action: int) -> int:
+        best_action = current_action
+        best_score = float("-inf")
+
+        for action in range(len(signal.green_phases)):
+            if action == current_action:
+                continue
+            if hasattr(signal, "get_phase_pressure"):
+                score = signal.get_phase_pressure(action)
+            else:
+                score = self._served_queue(signal, action)
+
+            if score > best_score:
+                best_score = score
+                best_action = action
+
+        return int(best_action)
+
+    def _served_queue(self, signal, action: int) -> float:
+        if not hasattr(signal, "get_served_lanes_for_action"):
+            return float(sum(signal.get_vehicle_queue()))
+
+        served = set(signal.get_served_lanes_for_action(action))
+        queues = signal.get_vehicle_queue()
+        return float(sum(q for lane, q in zip(signal.lanes, queues) if lane in served))
 
     def reset(self):
-        """Stateless agent — nothing to reset between episodes."""
         pass

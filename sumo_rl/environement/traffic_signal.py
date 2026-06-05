@@ -84,8 +84,9 @@ class TrafficSignalEnv:
         self._init_edge_to_direction()
 
         # Step 4: Execution state
-        self.current_phase = self.green_phases[0] # Initialize the current phase to the first green phase, which is usually the NS green phase.
-        self.current_green_phase_idx = 0
+        initial_phase = current_phase if current_phase in self.green_phases else self.green_phases[0]
+        self.current_phase = initial_phase
+        self.current_green_phase_idx = self.green_phases.index(initial_phase)
         self.transition_queue = []
         self.is_transitioning = False
         self.phase_timer = 0
@@ -115,6 +116,8 @@ class TrafficSignalEnv:
         """
         logics = self.sumo_traci.trafficlight.getAllProgramLogics(self.intersection_id)
         phases = logics[0].phases
+        self.phase_states = [p.state for p in phases]
+        self.controlled_links = self.sumo_traci.trafficlight.getControlledLinks(self.intersection_id)
 
         self.green_phases = [
             i for i, p in enumerate(phases)
@@ -125,6 +128,7 @@ class TrafficSignalEnv:
                 f"Intersection {self.intersection_id} has less than 2 green phases."
             )
         n = len(phases)
+        self.num_phases = n
         self.transition = {}
         for src in self.green_phases:
             for dst in self.green_phases:
@@ -150,7 +154,11 @@ class TrafficSignalEnv:
         jx, jy = self.sumo_traci.junction.getPosition(self.intersection_id)
 
         # Get all incoming edges (Get from controlled links, except interal edge)
-        links = self.sumo_traci.trafficlight.getControlledLinks(self.intersection_id)
+        links = getattr(
+            self,
+            "controlled_links",
+            self.sumo_traci.trafficlight.getControlledLinks(self.intersection_id),
+        )
         incoming_edges = set()
         for link_group in links:
             for from_lane, to_lane, via_link in link_group:
@@ -166,7 +174,7 @@ class TrafficSignalEnv:
             try:
                 shape = self.sumo_traci.lane.getShape(lane_id)
             except Exception:
-                shape = self.sumo_traci.edge.getShape(self.lanes[0]) # If the lane doesn't exist, we can use the shape of the first lane as a fallback, since they are usually the same for all lanes in the same edge.
+                shape = self.sumo_traci.edge.getShape(edge_id)
 
             fx, fy = shape[0] # edge's starting point
             dx, dy = jx - fx, jy - fy
@@ -175,17 +183,26 @@ class TrafficSignalEnv:
             else:
                 self.edge_to_direction[edge_id] = "S" if dy > 0 else "N"
 
+    @property
+    def current_green_phase(self) -> int:
+        """The SUMO phase index for the green phase currently targeted."""
+        return self.green_phases[self.current_green_phase_idx]
+
+    @property
     def state_size(self) -> int:
         """
         This intersection's observation vector length.
         Use in sumo_env.py to dynamically adjust the observation_space.
 
         - len(green_phases) -> phase one-hot
-        - 1 -> min_green
-        - len(lanes) -> vehicle queue length for each lane
+        - 4 -> current phase, phase timer, min-green flag, transition flag
+        - 2 * len(lanes) -> vehicle queue and density for each lane
+        - 1 -> total vehicle waiting time
         - 4 -> pedestrian queue length for each direction (N, E, S, W)
+        - 1 -> total pedestrian waiting time
+        - 1 -> pedestrian crossing occupancy
         """
-        return len(self.green_phases) + 1 + len(self.lanes) + 4
+        return len(self.green_phases) + 11 + (2 * len(self.lanes))
     
     def set_phase(self, action):
         """
@@ -196,14 +213,24 @@ class TrafficSignalEnv:
 
         Now use self.current_green_phase_idx to store the index of the green phase in self.green_phases.
         """
+        action = int(action)
+        if action < 0 or action >= len(self.green_phases):
+            raise ValueError(
+                f"Action {action} is outside the green phase action space "
+                f"for intersection {self.intersection_id}."
+            )
+
         target_phase = self.green_phases[action]
-        # If target phase is current green phase and not in transitoin, just keep the current phase
-        if target_phase == self.current_phase and not self.is_transitioning:
+        source_phase = self.current_green_phase
+
+        if self.is_transitioning:
             return
-        if target_phase == self.current_phase:
+
+        # If target phase is current green phase and not in transitoin, just keep the current phase
+        if target_phase == source_phase:
             return
         
-        path = self.transition[(self.current_phase, target_phase)]
+        path = self.transition[(source_phase, target_phase)]
         self.is_transitioning = True
         self.current_green_phase_idx = action
         self.transition_queue = list(path)
@@ -240,6 +267,30 @@ class TrafficSignalEnv:
             queue_lengths.append(self.sumo_traci.lane.getLastStepHaltingNumber(lane))
         return queue_lengths
 
+    def _capacity_estimates(self):
+        """Approximate lane and pedestrian storage capacities for normalization."""
+        if not self.lanes:
+            return 1.0, 1.0
+        length = max(float(self.sumo_traci.lane.getLength(self.lanes[0])), 1.0)
+        max_vehicle = max(length / 5.0, 1.0)
+        max_pedestrian = max(length / 0.215, 1.0)
+        return max_vehicle, max_pedestrian
+
+    def get_vehicle_density(self) -> list:
+        """
+        Get normalized vehicle occupancy for each controlled incoming lane.
+        """
+        max_vehicle, _ = self._capacity_estimates()
+        densities = []
+        for lane in self.lanes:
+            try:
+                densities.append(
+                    min(self.sumo_traci.lane.getLastStepVehicleNumber(lane) / max_vehicle, 1.0)
+                )
+            except Exception:
+                densities.append(0.0)
+        return densities
+
     def get_vehicle_waiting_time(self):
         """
         Get the total waiting time of vehicles in the lanes controlled by this traffic signal and return it as a single value.
@@ -248,6 +299,114 @@ class TrafficSignalEnv:
         for lane in self.lanes:
             waiting_time += self.sumo_traci.lane.getWaitingTime(lane)
         return waiting_time
+
+    def get_served_lanes_for_action(self, action: int, include_permissive: bool = True) -> list:
+        """
+        Return incoming lanes that would receive green for an action.
+
+        Action indices are the RL action indices, not raw SUMO phase indices.
+        The mapping is dynamic through self.green_phases, so this works for
+        both the 1x1 and 3x3 networks as long as SUMO exposes the phase logic.
+        """
+        action = int(action)
+        if action < 0 or action >= len(self.green_phases):
+            return []
+
+        phase_idx = self.green_phases[action]
+        phase_state = self.phase_states[phase_idx]
+        green_chars = {"G", "g"} if include_permissive else {"G"}
+        served = []
+        seen = set()
+
+        for link_idx, signal_state in enumerate(phase_state):
+            if signal_state not in green_chars:
+                continue
+            if link_idx >= len(self.controlled_links):
+                continue
+            for from_lane, _to_lane, _via_lane in self.controlled_links[link_idx]:
+                edge = self._lane_to_edge(from_lane)
+                if edge.startswith(":") or from_lane in seen:
+                    continue
+                if from_lane in self.lanes:
+                    served.append(from_lane)
+                    seen.add(from_lane)
+
+        return served
+
+    def get_phase_pressure(self, action: int) -> float:
+        """
+        Estimate max-pressure score for a candidate green action.
+
+        For each green movement, pressure is incoming halted vehicles minus
+        outgoing halted vehicles. If the outgoing lane cannot be queried, the
+        method falls back to incoming queue only.
+        """
+        action = int(action)
+        if action < 0 or action >= len(self.green_phases):
+            return float("-inf")
+
+        phase_idx = self.green_phases[action]
+        phase_state = self.phase_states[phase_idx]
+        pressure = 0.0
+        seen_movements = set()
+
+        for link_idx, signal_state in enumerate(phase_state):
+            if signal_state not in {"G", "g"}:
+                continue
+            if link_idx >= len(self.controlled_links):
+                continue
+            for from_lane, to_lane, _via_lane in self.controlled_links[link_idx]:
+                movement = (from_lane, to_lane)
+                if movement in seen_movements:
+                    continue
+                seen_movements.add(movement)
+
+                from_edge = self._lane_to_edge(from_lane)
+                if from_edge.startswith(":"):
+                    continue
+
+                try:
+                    incoming = float(self.sumo_traci.lane.getLastStepHaltingNumber(from_lane))
+                except Exception:
+                    incoming = 0.0
+
+                try:
+                    outgoing = float(self.sumo_traci.lane.getLastStepHaltingNumber(to_lane))
+                except Exception:
+                    outgoing = 0.0
+
+                pressure += incoming - outgoing
+
+        return pressure
+
+    def _get_person_ids(self):
+        """Return known pedestrian/person ids across SUMO versions."""
+        try:
+            return list(self.sumo_traci.person.getIDList())
+        except Exception:
+            try:
+                return list(self.sumo_traci.simulation.getPersonIDList())
+            except Exception:
+                return []
+
+    def has_pedestrian_crossing(self) -> bool:
+        """
+        Whether a pedestrian is currently moving on an internal crossing area
+        associated with this intersection.
+        """
+        for pid in self._get_person_ids():
+            try:
+                road_id = self.sumo_traci.person.getRoadID(pid)
+                speed = self.sumo_traci.person.getSpeed(pid)
+            except Exception:
+                continue
+            if road_id.startswith(":") and self.intersection_id in road_id and speed > 0.1:
+                return True
+        return False
+
+    def get_pedestrian_crossing_occupancy(self) -> float:
+        """Binary crossing occupancy feature used by the PPO state."""
+        return 1.0 if self.has_pedestrian_crossing() else 0.0
 
     def get_pedestrian_queue(self):
         """
@@ -284,7 +443,10 @@ class TrafficSignalEnv:
         total_waiting_time = 0
 
         for edge_id in self.incoming_edges:
-            ped_ids = self.sumo_traci.edge.getLastStepPersonIDs(edge_id)
+            try:
+                ped_ids = self.sumo_traci.edge.getLastStepPersonIDs(edge_id)
+            except Exception:
+                continue
             for pid in ped_ids:                
                 # If the edge is in the incoming edges an the pedestrian is waiting, then we count its waiting time.
                 if self.sumo_traci.person.getWaitingTime(pid) > 0:
@@ -301,25 +463,64 @@ class TrafficSignalEnv:
 
         # For simplicity, we only consider the green phases in the state representation, and we ignore the yellow phases, since they are transition phases and usually have fixed duration.
         if self.current_phase in self.green_phases:
-            phase_one_hot[self.green_phases.index(self.current_green_phase)] = 1.0
-        min_green = 1 if self.phase_timer >= self.min_green_time else 0
-        vehicle_queue = self.get_vehicle_queue()
+            phase_one_hot[self.green_phases.index(self.current_phase)] = 1.0
+        else:
+            phase_one_hot[self.current_green_phase_idx] = 1.0
+
+        phase_index = self.current_phase / max(self.num_phases - 1, 1)
+        phase_timer = min(self.phase_timer / max(self.max_green_time, 1), 1.0)
+        min_green = 1.0 if self.phase_timer >= self.min_green_time else 0.0
+        is_transitioning = 1.0 if self.is_transitioning else 0.0
+
+        raw_vehicle_queue = self.get_vehicle_queue()
+        vehicle_density = self.get_vehicle_density()
         ped_queue = self.get_pedestrian_queue()
+        vehicle_wait = self.get_vehicle_waiting_time()
+        ped_wait = self.get_pedestrian_waiting_time()
+        pedestrian_crossing = self.get_pedestrian_crossing_occupancy()
 
         # Normalize the queue length to [0, 1] ny dividing the MAX_VEHICLE and MAX_PED.
-        length = self.sumo_traci.lane.getLength(self.lanes[0]) # Get the length of the lane, which is the same for all lanes controlled by this traffic signal, and use it as the max queue length, since if the queue length exceeds the lane length, it means the lane is fully blocked.
-        car_length = 5.0 # Average car length
-        pedestrain_lenth = 0.215 # Official website pedestrian class's length
-        MAX_VEHICLE = length / car_length
-        MAX_PED = length / 0.215
-        vehicle_queue = [q / MAX_VEHICLE for q in vehicle_queue]
-        ped_queue = [q / MAX_PED for q in ped_queue]
+        max_vehicle, max_ped = self._capacity_estimates()
+        vehicle_queue = [min(q / max_vehicle, 1.0) for q in raw_vehicle_queue]
+        ped_queue = [min(q / max_ped, 1.0) for q in ped_queue]
+        vehicle_wait_norm = min(vehicle_wait / max(len(self.lanes) * self.max_green_time, 1), 1.0)
+        ped_wait_norm = min(ped_wait / max(4 * self.max_green_time, 1), 1.0)
+
+        state_vector = np.concatenate([
+            phase_one_hot,
+            np.array([
+                phase_index,
+                phase_timer,
+                min_green,
+                is_transitioning,
+            ], dtype=np.float32),
+            np.array(vehicle_queue, dtype=np.float32),
+            np.array(vehicle_density, dtype=np.float32),
+            np.array([
+                vehicle_wait_norm,
+            ], dtype=np.float32),
+            np.array(ped_queue, dtype=np.float32),
+            np.array([
+                ped_wait_norm,
+                pedestrian_crossing,
+            ], dtype=np.float32),
+        ]).astype(np.float32)
+
+        state_vector = np.clip(state_vector, 0.0, 1.0)
 
         raw_state_feature = {
             "phase_one_hot": phase_one_hot, # List
+            "phase_index": phase_index,
+            "phase_timer": phase_timer,
             "min_green": min_green, # Number
+            "is_transitioning": is_transitioning,
             "vehicle_queue": vehicle_queue, # List
-            "ped_queue": ped_queue # List
+            "vehicle_density": vehicle_density,
+            "vehicle_waiting_time": vehicle_wait_norm,
+            "ped_queue": ped_queue, # List
+            "pedestrian_waiting_time": ped_wait_norm,
+            "pedestrian_crossing": pedestrian_crossing,
+            "state_vector": state_vector,
         }
         return raw_state_feature
 

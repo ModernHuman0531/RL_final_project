@@ -45,7 +45,12 @@ class SUMOEnvironment(gym.Env):
         end_time: int=3600,
         controlled_tls: list=None,
         use_gui: bool=False,
-        enable_pedestrian_safety: bool=True
+        enable_pedestrian_safety: bool=True,
+        reward_mode: str="waiting_time",
+        queue_reward_weight: float=1.0,
+        vehicle_wait_weight: float=1.0,
+        pedestrian_wait_weight: float=1.0,
+        violation_penalty: float=50.0
     ):
         self.sumo_cfg_file = sumo_cfg_file
         self.delta_time = delta_time
@@ -57,6 +62,11 @@ class SUMOEnvironment(gym.Env):
         self.use_gui = use_gui
         self.enable_pedestrian_safety = enable_pedestrian_safety
         self.controlled_tls = controlled_tls
+        self.reward_mode = reward_mode
+        self.queue_reward_weight = queue_reward_weight
+        self.vehicle_wait_weight = vehicle_wait_weight
+        self.pedestrian_wait_weight = pedestrian_wait_weight
+        self.violation_penalty = violation_penalty
 
         self.sumo_traci = traci
         self.sumo_running = False
@@ -64,6 +74,8 @@ class SUMOEnvironment(gym.Env):
         self.traffic_signal_ids = []
         self.traffic_signals = {}
         self.intersection_num = 0
+        self.last_invalid_actions = 0
+        self.last_reward_components = {}
         
 
         # Placeholder spaces — redefined in reset() once SUMO reveals the real
@@ -94,7 +106,7 @@ class SUMOEnvironment(gym.Env):
                 begin_time = self.begin_time,
                 end_time = self.end_time,
                 current_phase = self.sumo_traci.trafficlight.getPhase(intersection_id),
-                enable_pedestrian_safety = self.enable_pedestrian_safety
+                enable_pedestrian_safety_constraint = self.enable_pedestrian_safety
             )
         return traffic_signals
     
@@ -116,17 +128,60 @@ class SUMOEnvironment(gym.Env):
         )
 
     # ----- Implement calculational functions for reward and state features ----- #
-    def calculate_reward(self, alpha=1.0, beta=1.0):
+    def get_total_vehicle_queue(self):
+        return sum(sum(signal.get_vehicle_queue()) for signal in self.traffic_signals.values())
+
+    def get_total_vehicle_waiting_time(self):
+        return sum(signal.get_vehicle_waiting_time() for signal in self.traffic_signals.values())
+
+    def get_total_pedestrian_waiting_time(self):
+        return sum(signal.get_pedestrian_waiting_time() for signal in self.traffic_signals.values())
+
+    def get_total_pedestrian_crossing_occupancy(self):
+        return sum(signal.get_pedestrian_crossing_occupancy() for signal in self.traffic_signals.values())
+
+    def calculate_reward(self, previous_queue=None, current_queue=None, invalid_actions=0):
         """
         Calculate the reward for the current state take action in the environment.
-        The reward is calculated as a weighted sum of the negative total waiting time 
-        of vehicles and pedestrians in the lanes controlled by this traffic signal.
+        Supported reward modes:
+        - waiting_time: negative weighted vehicle and pedestrian waiting time.
+        - queue_delta: reward queue reduction from before to after the action.
+        - hybrid: queue reduction minus weighted wait and safety repair penalties.
         """
-        vehicle_waiting_time, ped_waiting_time = 0, 0
-        for signal in self.traffic_signals.values():
-            vehicle_waiting_time += signal.get_vehicle_waiting_time()
-            ped_waiting_time += signal.get_pedestrian_waiting_time()
-        reward = -(alpha * vehicle_waiting_time + beta * ped_waiting_time)
+        vehicle_waiting_time = self.get_total_vehicle_waiting_time()
+        ped_waiting_time = self.get_total_pedestrian_waiting_time()
+        if current_queue is None:
+            current_queue = self.get_total_vehicle_queue()
+        if previous_queue is None:
+            previous_queue = current_queue
+
+        queue_delta = previous_queue - current_queue
+
+        if self.reward_mode == "queue_delta":
+            reward = self.queue_reward_weight * queue_delta
+        elif self.reward_mode == "hybrid":
+            reward = (
+                self.queue_reward_weight * queue_delta
+                - self.vehicle_wait_weight * vehicle_waiting_time
+                - self.pedestrian_wait_weight * ped_waiting_time
+                - self.violation_penalty * invalid_actions
+            )
+        else:
+            reward = -(
+                self.vehicle_wait_weight * vehicle_waiting_time
+                + self.pedestrian_wait_weight * ped_waiting_time
+                + self.violation_penalty * invalid_actions
+            )
+
+        self.last_reward_components = {
+            "reward_mode": self.reward_mode,
+            "queue_delta": float(queue_delta),
+            "previous_queue": float(previous_queue),
+            "current_queue": float(current_queue),
+            "vehicle_waiting_time": float(vehicle_waiting_time),
+            "pedestrian_waiting_time": float(ped_waiting_time),
+            "invalid_actions": int(invalid_actions),
+        }
         return reward
     
     def get_state(self):
@@ -147,12 +202,15 @@ class SUMOEnvironment(gym.Env):
             If above isn't enough, we can also add more features, such as current phase.
             Different from the green phases, current phase includes all the phases, including the yellow phases.
             """
-            state = np.concatenate([
-                feature["phase_one_hot"],
-                [feature["min_green"]],
-                feature["vehicle_queue"],
-                feature["ped_queue"]
-            ])
+            if "state_vector" in feature:
+                state = feature["state_vector"]
+            else:
+                state = np.concatenate([
+                    feature["phase_one_hot"],
+                    [feature["min_green"]],
+                    feature["vehicle_queue"],
+                    feature["ped_queue"]
+                ])
             states.append(state)
         states = np.concatenate(states).astype(np.float32)
         return states
@@ -165,11 +223,15 @@ class SUMOEnvironment(gym.Env):
         """
         # A list of actions for each traffic signal, where each action is either 0 or 1
         
+        self.last_invalid_actions = 0
+        action = np.array(action, dtype=np.int32, copy=True)
+
         for i, signal in enumerate(self.traffic_signals.values()):
             valid_actions = signal.get_valid_actions()
             if valid_actions[action[i]] == 1:
                 pass
             else:
+                self.last_invalid_actions += 1
                 action[i] = self.handle_invalid_action(valid_actions)
         return action
 
@@ -219,6 +281,8 @@ class SUMOEnvironment(gym.Env):
 
 
         self._update_spaces()
+        self.last_invalid_actions = 0
+        self.last_reward_components = {}
 
         state = self.get_state()
         return state, {}
@@ -229,6 +293,8 @@ class SUMOEnvironment(gym.Env):
         Take a step in the environment by applying the given action,
         and return the next_state, reward, terminated, truncated, and info.
         """
+        previous_queue = self.get_total_vehicle_queue()
+
         # Constraint check and action making
         action = self.take_action(action)
 
@@ -242,10 +308,19 @@ class SUMOEnvironment(gym.Env):
             self.sumo_traci.simulationStep()
         # Get the next state, reward, and check if the episode is terminated.
         next_state = self.get_state()
-        reward = self.calculate_reward()
+        current_queue = self.get_total_vehicle_queue()
+        reward = self.calculate_reward(
+            previous_queue=previous_queue,
+            current_queue=current_queue,
+            invalid_actions=self.last_invalid_actions,
+        )
         terminated = self.is_done()
         truncated = False # We don't have a truncation condition for now.
-        info = {}
+        info = {
+            "applied_action": action.copy(),
+            "invalid_actions": self.last_invalid_actions,
+            "reward_components": self.last_reward_components.copy(),
+        }
 
         return next_state, reward, terminated, truncated, info
     

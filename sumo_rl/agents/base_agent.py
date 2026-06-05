@@ -14,6 +14,7 @@ Architecture
   Epsilon-greedy exploration with linear decay.
 """
 
+import os
 import random
 from collections import deque
 
@@ -154,6 +155,8 @@ class DQNAgent:
             s_i = state[i * self.state_dim: (i + 1) * self.state_dim]
             valid = signal.get_valid_actions()
             valid_indices = [a for a, v in enumerate(valid) if v == 1]
+            if not valid_indices:
+                valid_indices = list(range(self.action_dim))
 
             if random.random() < self.epsilon:
                 actions.append(random.choice(valid_indices))
@@ -204,12 +207,51 @@ class DQNAgent:
         """Called at the start of each episode — nothing to reset for DQN."""
         pass
 
-    def save(self, path: str):
-        torch.save(self.online_net.state_dict(), path)
+    def get_config(self) -> dict:
+        return {
+            "state_dim": self.state_dim,
+            "action_dim": self.action_dim,
+            "num_intersections": self.num_intersections,
+            "gamma": self.gamma,
+            "batch_size": self.batch_size,
+            "target_update_freq": self.target_update_freq,
+            "device": str(self.device),
+        }
 
-    def load(self, path: str):
-        self.online_net.load_state_dict(torch.load(path, map_location=self.device))
+    def save(self, path: str, episode: int = None, extra: dict = None):
+        directory = os.path.dirname(path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
+        torch.save(
+            {
+                "model_state_dict": self.online_net.state_dict(),
+                "target_state_dict": self.target_net.state_dict(),
+                "optimizer_state_dict": self.optimizer.state_dict(),
+                "config": self.get_config(),
+                "steps": self.steps,
+                "epsilon": self.epsilon,
+                "episode": episode,
+                "extra": extra or {},
+            },
+            path,
+        )
+
+    def load(self, path: str, load_optimizer: bool = True):
+        checkpoint = torch.load(path, map_location=self.device)
+        if isinstance(checkpoint, dict) and "model_state_dict" in checkpoint:
+            self.online_net.load_state_dict(checkpoint["model_state_dict"])
+            self.target_net.load_state_dict(
+                checkpoint.get("target_state_dict", checkpoint["model_state_dict"])
+            )
+            if load_optimizer and "optimizer_state_dict" in checkpoint:
+                self.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
+            self.steps = int(checkpoint.get("steps", self.steps))
+            self.epsilon = float(checkpoint.get("epsilon", self.epsilon))
+            return checkpoint
+
+        self.online_net.load_state_dict(checkpoint)
         self.target_net.load_state_dict(self.online_net.state_dict())
+        return {"legacy_state_dict": True}
 
     def get_q_fn(self):
         """Return a callable suitable for SPRePlusAgent.set_policy()."""

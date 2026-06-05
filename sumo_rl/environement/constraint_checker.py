@@ -32,9 +32,10 @@ from typing import TYPE_CHECKING, Dict, List, Set
 
 if "SUMO_HOME" in os.environ:
     tools_path = os.path.join(os.environ["SUMO_HOME"], "tools")
-    os.path.append(tools_path)
+    sys.path.append(tools_path)
 
-from .traffic_signal import TrafficSignalEnv
+if TYPE_CHECKING:
+    from .traffic_signal import TrafficSignalEnv
 
 class ConstraintChecker:
     """
@@ -53,7 +54,7 @@ class ConstraintChecker:
         self.enable_pedestrian_safety = enable_pedestrian_safety
 
         # Build the mapping of green phase and the conflicting pedestrian crossing phase.
-        self._confilct_map: Dict[int, Set[str]] = {}
+        self.conflict_map: Dict[int, Set[str]] = {}
         self._build_conflict_map()
     
     def _build_conflict_map(self):
@@ -84,7 +85,7 @@ class ConstraintChecker:
             # Crossing link's from_lane start from ":", use this feature to identify.
             for (from_lane, to_lane, via_link) in link_group:
                 from_edge = from_lane.rsplit("_", 1)[0]
-                if from_edge.startwith(":"):
+                if from_edge.startswith(":"):
                     crossing_link_indicies.add(i)
                     break
         
@@ -118,7 +119,7 @@ class ConstraintChecker:
             if vehicle_directions & {"E", "W"}:
                 conflict_ped_directions |= {"N", "S"}
             
-            self._confilct_map[green_idx] = conflict_ped_directions
+            self.conflict_map[green_idx] = conflict_ped_directions
 
     def _check_traffic_light_constraint(self) -> List[int]:
         """
@@ -129,22 +130,22 @@ class ConstraintChecker:
         """
         n = len(self.signal.green_phases)
         valid_actions = [1] * n
-        current = self.signal.current_green_phase
+        current_idx = self.signal.current_green_phase_idx
 
         # 1. When in Yellow phase, the traffic light cannot switch.
         if self.signal.is_transitioning:
             valid_actions = [0] * n
-            valid_actions[self.signal.green_phases.index(current)] = 1
+            valid_actions[current_idx] = 1
             return valid_actions
         # 2. Didn't reached the minimum green time, the traffic light cannot switch.
         if self.signal.phase_timer < self.signal.min_green_time:
             valid_actions = [0] * n
-            valid_actions[self.signal.green_phases.index(current)] = 1
+            valid_actions[current_idx] = 1
             return valid_actions
         # 3. Exceed the maximum green time, the traffic light must switch.
         if self.signal.phase_timer >= self.signal.max_green_time:
             valid_actions = [1] * n
-            valid_actions[self.signal.green_phases.index(current)] = 0
+            valid_actions[current_idx] = 0
             return valid_actions
         
         return valid_actions
@@ -161,37 +162,17 @@ class ConstraintChecker:
         """
         n = len(self.signal.green_phases)
         valid = [1] * n
-        traci = self.signal.sumo_traci
-        jid = self.signal.intersection_id
 
-        try:
-            all_peds = traci.simulation.getPersonIDList()
-        except Exception as e:
-            print(f"Error getting person ID list: {e}")
+        if not self.signal.has_pedestrian_crossing():
             return valid
-        
-        pedestrian_crossing = False
-        for pid in all_peds:
-            road_id = traci.person.getRoadID(pid)
-            # Internal edge starts from ':', and 
-            if not road_id.startwith(f":{jid}"):
-                continue
-            # Confirm this pedestrian is crossing, not just waiting on the sidewalk.(Sped > 0.1)
-            try:
-                ped_speed = traci.person.getSpeed(pid)
-                if ped_speed > 0.1:
-                    pedestrian_crossing = True
-                    break
-            except Exception as e:
-                continue
 
-            if pedestrian_crossing:
-                # If pedestrian is crossing, can't change the current phase.
-                current = self.signal.current_green_phase_idx
-                valid = [0] * n
-                valid[current] = 1
-            
-            return valid
+        # If someone is already in the crossing area, do not allow a phase
+        # change. This is deliberately conservative for the project safety
+        # layer; the current green phase stays valid.
+        current = self.signal.current_green_phase_idx
+        valid = [0] * n
+        valid[current] = 1
+        return valid
     
     def get_valid_actions(self) -> List[int]:
         """
@@ -203,6 +184,9 @@ class ConstraintChecker:
         if self.enable_pedestrian_safety:
             ped_safe_actions = self._check_pedestrian_safety()
             valid_actions = [v & p for v, p in zip(valid_actions, ped_safe_actions)]
+
+        if not any(valid_actions):
+            valid_actions[self.signal.current_green_phase_idx] = 1
         
         return valid_actions
     # -- Debug function
@@ -221,5 +205,6 @@ class ConstraintChecker:
             "min_green_reached": s.phase_timer >= s.min_green_time,
             "max_green_exceeded": s.phase_timer >= s.max_green_time,
             "valid_actions": self.get_valid_actions(),
-            "conflict_map": {k: list(v) for k, v in self._confilct_map.items()}
+            "conflict_map": {k: list(v) for k, v in self.conflict_map.items()}
         }
+        return info

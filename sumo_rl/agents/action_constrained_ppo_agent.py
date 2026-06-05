@@ -118,6 +118,7 @@ class ActionConstrainedPPOAgent:
         value_coef: float = 0.5,
         max_grad_norm: float = 0.5,
         hidden_dim: int = 128,
+        value_clip_epsilon: float = None,
         device: str = "cpu",
     ):
         self.state_dim = state_dim
@@ -129,6 +130,11 @@ class ActionConstrainedPPOAgent:
         self.entropy_coef = entropy_coef
         self.value_coef = value_coef
         self.max_grad_norm = max_grad_norm
+        self.hidden_dim = hidden_dim
+        self.learning_rate = learning_rate
+        self.value_clip_epsilon = (
+            ppo_clip_epsilon if value_clip_epsilon is None else value_clip_epsilon
+        )
         self.device = torch.device(device)
         
         # Networks
@@ -141,6 +147,7 @@ class ActionConstrainedPPOAgent:
         
         # Experience buffer
         self.reset_buffer()
+        self._last_action_mask = None
         
         # Tracking
         self.num_actions_sampled = 0
@@ -150,12 +157,36 @@ class ActionConstrainedPPOAgent:
         """Reset the experience buffer for a new trajectory."""
         self.states = deque()
         self.actions = deque()
+        self.action_masks = deque()
         self.rewards = deque()
         self.values = deque()
         self.log_probs = deque()
         self.dones = deque()
+
+    def _build_action_mask(self, feasible_actions: list) -> np.ndarray:
+        """
+        Build a binary mask over the action space.
+
+        The same mask used during sampling must also be used during PPO updates,
+        otherwise old and new log probabilities come from different
+        distributions.
+        """
+        mask = np.zeros(self.action_dim, dtype=np.float32)
+        for action_idx in feasible_actions:
+            if 0 <= action_idx < self.action_dim:
+                mask[action_idx] = 1.0
+
+        if mask.sum() == 0:
+            raise ValueError("No feasible actions were provided to the PPO agent.")
+
+        return mask
     
-    def select_action(self, state: np.ndarray, feasible_actions: list) -> int:
+    def select_action(
+        self,
+        state: np.ndarray,
+        feasible_actions: list,
+        deterministic: bool = False,
+    ) -> int:
         """
         Select an action using the policy with action masking.
         
@@ -169,6 +200,8 @@ class ActionConstrainedPPOAgent:
             state: Current state (numpy array).
             feasible_actions: List of feasible action indices for this step.
                              e.g., [0, 1] or [1] if only action 1 is feasible.
+            deterministic: If True, choose the highest-probability feasible
+                           action instead of sampling. Use for evaluation.
         
         Returns:
             action: Selected action index (guaranteed feasible).
@@ -181,17 +214,23 @@ class ActionConstrainedPPOAgent:
             value = self.critic(state_tensor)   # Shape: (1,)
         
         # Apply action masking: set infeasible actions to -1e9
-        mask = torch.zeros(self.action_dim, device=self.device)
-        for action_idx in feasible_actions:
-            mask[action_idx] = 1.0
+        mask_np = self._build_action_mask(feasible_actions)
+        mask = torch.FloatTensor(mask_np).to(self.device)
         
         masked_logits = logits.clone()
         masked_logits[mask == 0] = -1e9
         
         # Create distribution and sample
         dist = Categorical(logits=masked_logits)
-        action = dist.sample()
+        if deterministic:
+            action = torch.argmax(masked_logits)
+        else:
+            action = dist.sample()
         log_prob = dist.log_prob(action)
+
+        # Keep the exact mask so store_experience() can save it with the step.
+        self._last_action_mask = mask_np.copy()
+        self.num_actions_sampled += 1
         
         return action.item(), log_prob.item(), value.item()
     
@@ -203,10 +242,29 @@ class ActionConstrainedPPOAgent:
         value: float,
         log_prob: float,
         done: bool,
+        feasible_actions: list = None,
+        action_mask: np.ndarray = None,
     ):
         """Store experience for batch training."""
+        if action_mask is None:
+            if feasible_actions is not None:
+                action_mask = self._build_action_mask(feasible_actions)
+            elif self._last_action_mask is not None:
+                action_mask = self._last_action_mask
+            else:
+                action_mask = np.ones(self.action_dim, dtype=np.float32)
+
+        action_mask = np.asarray(action_mask, dtype=np.float32)
+        if action_mask.shape != (self.action_dim,):
+            raise ValueError(
+                f"action_mask must have shape ({self.action_dim},), got {action_mask.shape}"
+            )
+        if action_mask.sum() == 0:
+            raise ValueError("Stored action_mask has no valid actions.")
+
         self.states.append(state)
         self.actions.append(action)
+        self.action_masks.append(action_mask.copy())
         self.rewards.append(reward)
         self.values.append(value)
         self.log_probs.append(log_prob)
@@ -277,6 +335,8 @@ class ActionConstrainedPPOAgent:
         # Convert to tensors
         states = torch.FloatTensor(np.array(list(self.states))).to(self.device)
         actions = torch.LongTensor(list(self.actions)).to(self.device)
+        action_masks = torch.FloatTensor(np.array(list(self.action_masks))).to(self.device)
+        old_values = torch.FloatTensor(list(self.values)).to(self.device)
         old_log_probs = torch.FloatTensor(list(self.log_probs)).to(self.device)
         returns_tensor = torch.FloatTensor(returns).to(self.device)
         advantages_tensor = torch.FloatTensor(advantages).to(self.device)
@@ -287,9 +347,18 @@ class ActionConstrainedPPOAgent:
             "value_loss": 0.0,
             "entropy": 0.0,
             "kl_divergence": 0.0,
+            "approx_kl": 0.0,
+            "clip_fraction": 0.0,
+            "value_clip_fraction": 0.0,
+            "explained_variance": 0.0,
+            "mean_return": returns_tensor.mean().item(),
+            "mean_advantage": advantages_tensor.mean().item(),
+            "std_advantage": advantages_tensor.std(unbiased=False).item(),
+            "valid_action_count": action_masks.sum(dim=1).mean().item(),
+            "valid_action_fraction": action_masks.mean().item(),
         }
         
-        num_batches = max(1, len(self.states) // batch_size)
+        num_updates = 0
         
         for epoch in range(num_epochs):
             # Shuffle indices
@@ -301,26 +370,41 @@ class ActionConstrainedPPOAgent:
                 
                 batch_states = states[batch_indices]
                 batch_actions = actions[batch_indices]
+                batch_action_masks = action_masks[batch_indices]
+                batch_old_values = old_values[batch_indices]
                 batch_old_log_probs = old_log_probs[batch_indices]
                 batch_returns = returns_tensor[batch_indices]
                 batch_advantages = advantages_tensor[batch_indices]
                 
                 # Forward pass
                 logits = self.actor(batch_states)  # (batch, action_dim)
-                dist = Categorical(logits=logits)
+                masked_logits = logits.masked_fill(batch_action_masks == 0, -1e9)
+                dist = Categorical(logits=masked_logits)
                 new_log_probs = dist.log_prob(batch_actions)
                 entropy = dist.entropy().mean()
                 
                 values = self.critic(batch_states).squeeze(-1)  # (batch,)
                 
                 # PPO policy loss (clipped objective)
-                ratio = torch.exp(new_log_probs - batch_old_log_probs)
+                log_ratio = new_log_probs - batch_old_log_probs
+                ratio = torch.exp(log_ratio)
                 surr1 = ratio * batch_advantages
                 surr2 = torch.clamp(ratio, 1.0 - self.ppo_clip_epsilon, 1.0 + self.ppo_clip_epsilon) * batch_advantages
                 policy_loss = -torch.min(surr1, surr2).mean()
                 
-                # Value loss
-                value_loss = nn.functional.mse_loss(values, batch_returns)
+                # Clipped value loss keeps critic updates from jumping too far
+                # away from the value estimates used to compute advantages.
+                value_pred_clipped = batch_old_values + torch.clamp(
+                    values - batch_old_values,
+                    -self.value_clip_epsilon,
+                    self.value_clip_epsilon,
+                )
+                value_loss_unclipped = (values - batch_returns).pow(2)
+                value_loss_clipped = (value_pred_clipped - batch_returns).pow(2)
+                value_loss = 0.5 * torch.max(
+                    value_loss_unclipped,
+                    value_loss_clipped,
+                ).mean()
                 
                 # Combined loss
                 loss = policy_loss + self.value_coef * value_loss - self.entropy_coef * entropy
@@ -341,35 +425,102 @@ class ActionConstrainedPPOAgent:
                 # Track metrics
                 with torch.no_grad():
                     kl_div = (batch_old_log_probs - new_log_probs).mean().item()
+                    approx_kl = ((ratio - 1.0) - log_ratio).mean().item()
+                    clip_fraction = (
+                        (torch.abs(ratio - 1.0) > self.ppo_clip_epsilon)
+                        .float()
+                        .mean()
+                        .item()
+                    )
+                    value_clip_fraction = (
+                        (torch.abs(values - batch_old_values) > self.value_clip_epsilon)
+                        .float()
+                        .mean()
+                        .item()
+                    )
                 
                 metrics["policy_loss"] += policy_loss.item()
                 metrics["value_loss"] += value_loss.item()
                 metrics["entropy"] += entropy.item()
                 metrics["kl_divergence"] += kl_div
+                metrics["approx_kl"] += approx_kl
+                metrics["clip_fraction"] += clip_fraction
+                metrics["value_clip_fraction"] += value_clip_fraction
+                num_updates += 1
         
         # Average metrics
-        num_updates = num_epochs * num_batches
-        for key in metrics:
-            metrics[key] /= num_updates
+        for key in (
+            "policy_loss",
+            "value_loss",
+            "entropy",
+            "kl_divergence",
+            "approx_kl",
+            "clip_fraction",
+            "value_clip_fraction",
+        ):
+            metrics[key] /= max(num_updates, 1)
+
+        with torch.no_grad():
+            final_values = self.critic(states).squeeze(-1)
+            returns_variance = torch.var(returns_tensor, unbiased=False)
+            if returns_variance.item() > 1e-8:
+                explained_variance = (
+                    1.0
+                    - torch.var(returns_tensor - final_values, unbiased=False)
+                    / returns_variance
+                )
+                metrics["explained_variance"] = explained_variance.item()
         
         # Reset buffer for next episode
         self.reset_buffer()
         
         return metrics
     
-    def save(self, path: str):
-        """Save actor and critic networks."""
+    def get_config(self):
+        """Return enough metadata to recreate this agent."""
+        return {
+            "state_dim": self.state_dim,
+            "action_dim": self.action_dim,
+            "num_intersections": self.num_intersections,
+            "learning_rate": self.learning_rate,
+            "gamma": self.gamma,
+            "gae_lambda": self.gae_lambda,
+            "ppo_clip_epsilon": self.ppo_clip_epsilon,
+            "entropy_coef": self.entropy_coef,
+            "value_coef": self.value_coef,
+            "max_grad_norm": self.max_grad_norm,
+            "hidden_dim": self.hidden_dim,
+            "value_clip_epsilon": self.value_clip_epsilon,
+            "device": str(self.device),
+        }
+
+    def save(self, path: str, episode: int = None, extra: dict = None):
+        """Save actor, critic, optimizer state, and training metadata."""
         torch.save({
             "actor_state_dict": self.actor.state_dict(),
             "critic_state_dict": self.critic.state_dict(),
+            "actor_optimizer_state_dict": self.actor_optimizer.state_dict(),
+            "critic_optimizer_state_dict": self.critic_optimizer.state_dict(),
+            "config": self.get_config(),
+            "episode": episode,
+            "num_actions_sampled": self.num_actions_sampled,
+            "num_actions_rejected": self.num_actions_rejected,
+            "extra": extra or {},
         }, path)
     
-    def load(self, path: str):
+    def load(self, path: str, load_optimizers: bool = True):
         """Load actor and critic networks."""
         checkpoint = torch.load(path, map_location=self.device)
         self.actor.load_state_dict(checkpoint["actor_state_dict"])
         self.critic.load_state_dict(checkpoint["critic_state_dict"])
+        if load_optimizers and "actor_optimizer_state_dict" in checkpoint:
+            self.actor_optimizer.load_state_dict(checkpoint["actor_optimizer_state_dict"])
+        if load_optimizers and "critic_optimizer_state_dict" in checkpoint:
+            self.critic_optimizer.load_state_dict(checkpoint["critic_optimizer_state_dict"])
+        self.num_actions_sampled = checkpoint.get("num_actions_sampled", self.num_actions_sampled)
+        self.num_actions_rejected = checkpoint.get("num_actions_rejected", self.num_actions_rejected)
+        return checkpoint
     
     def reset(self):
         """Reset for new episode (clears internal state if any)."""
-        pass
+        self._last_action_mask = None
