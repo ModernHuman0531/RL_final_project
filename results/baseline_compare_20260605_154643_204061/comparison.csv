@@ -1,0 +1,4 @@
+agent,episodes,avg_waiting_time,avg_pedestrian_waiting_time,avg_queue_length,avg_pedestrian_crossing_occupancy,violation_rate,violations,total_reward,steps
+Fixed-Time (30s cycle),1,41.38333333333333,0.0,5.75,0.0,0.0,0,-2483.0,60.0
+Max Pressure,1,40.7,0.0,5.9,0.0,0.2833333333333333,17,-3292.0,60.0
+SOTL (kappa=5),1,36.45,0.0,5.483333333333333,0.0,0.0,0,-2187.0,60.0

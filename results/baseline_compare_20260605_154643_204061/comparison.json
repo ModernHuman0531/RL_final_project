@@ -1,0 +1,38 @@
+[
+  {
+    "agent": "Fixed-Time (30s cycle)",
+    "episodes": 1,
+    "avg_waiting_time": 41.38333333333333,
+    "avg_pedestrian_waiting_time": 0.0,
+    "avg_queue_length": 5.75,
+    "avg_pedestrian_crossing_occupancy": 0.0,
+    "violation_rate": 0.0,
+    "total_reward": -2483.0,
+    "steps": 60.0,
+    "violations": 0
+  },
+  {
+    "agent": "Max Pressure",
+    "episodes": 1,
+    "avg_waiting_time": 40.7,
+    "avg_pedestrian_waiting_time": 0.0,
+    "avg_queue_length": 5.9,
+    "avg_pedestrian_crossing_occupancy": 0.0,
+    "violation_rate": 0.2833333333333333,
+    "total_reward": -3292.0,
+    "steps": 60.0,
+    "violations": 17
+  },
+  {
+    "agent": "SOTL (kappa=5)",
+    "episodes": 1,
+    "avg_waiting_time": 36.45,
+    "avg_pedestrian_waiting_time": 0.0,
+    "avg_queue_length": 5.483333333333333,
+    "avg_pedestrian_crossing_occupancy": 0.0,
+    "violation_rate": 0.0,
+    "total_reward": -2187.0,
+    "steps": 60.0,
+    "violations": 0
+  }
+]

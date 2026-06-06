@@ -1,0 +1,17 @@
+{
+  "run_dir": "results/dqn_ar_20260605_155756_358110",
+  "final_model": "results/dqn_ar_20260605_155756_358110/dqn_ar_final.pt",
+  "legacy_save": null,
+  "episodes": 100,
+  "final_metrics": {
+    "avg_waiting_time": 1433.7697222222223,
+    "avg_pedestrian_waiting_time": 0.0,
+    "avg_queue_length": 80.71,
+    "violation_rate": 0.0,
+    "total_reward": -5161571.0,
+    "avg_loss": 1190781.2728038195,
+    "epsilon": 0.05,
+    "steps": 3600,
+    "episode": 100
+  }
+}
