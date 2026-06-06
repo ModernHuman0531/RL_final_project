@@ -1,0 +1,17 @@
+{
+  "run_dir": "results/dqn_1x1_real_100ep_real_metrics_20260606_020244",
+  "final_model": "results/dqn_1x1_real_100ep_real_metrics_20260606_020244/dqn_ar_final.pt",
+  "legacy_save": null,
+  "episodes": 100,
+  "final_metrics": {
+    "avg_waiting_time": 70.92222222222222,
+    "avg_pedestrian_waiting_time": 0.005555555555555556,
+    "avg_queue_length": 4.612777777777778,
+    "violation_rate": 0.0,
+    "total_reward": -255340.0,
+    "avg_loss": 3010147288.3233333,
+    "epsilon": 0.05,
+    "steps": 3600,
+    "episode": 100
+  }
+}

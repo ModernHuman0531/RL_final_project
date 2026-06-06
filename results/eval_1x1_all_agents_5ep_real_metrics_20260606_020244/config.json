@@ -1,0 +1,41 @@
+{
+  "sumo_cfg_file": "sumo_rl/nets/single-intersection/single_intersection.sumocfg",
+  "controlled_tls": null,
+  "num_episodes": 5,
+  "sim_end_time": 3600,
+  "delta_time": 1,
+  "yellow_time": 5,
+  "min_green_time": 10,
+  "max_green_time": 60,
+  "reward_mode": "waiting_time",
+  "queue_reward_weight": 1.0,
+  "vehicle_wait_weight": 1.0,
+  "pedestrian_wait_weight": 1.0,
+  "violation_penalty": 50.0,
+  "fixed_cycle": 30,
+  "sotl_kappa": 5,
+  "output_dir": "results",
+  "run_name": "eval_1x1_all_agents_5ep_real_metrics_20260606_020244",
+  "use_gui": false,
+  "device": "cpu",
+  "dqn_model": "results/dqn_1x1_real_100ep_real_metrics_20260606_020244/dqn_ar_final.pt",
+  "include_untrained_dqn": false,
+  "ppo_model": "results/ppo_1x1_real_100ep_real_metrics_20260606_020244/agent_final.pt",
+  "spre_use_scipy": false,
+  "state_dim": 23,
+  "joint_state_dim": 23,
+  "action_dim": 4,
+  "num_intersections": 1,
+  "traffic_signal_ids": [
+    "c"
+  ],
+  "green_phases": {
+    "c": [
+      0,
+      1,
+      3,
+      4
+    ]
+  },
+  "run_dir": "results/eval_1x1_all_agents_5ep_real_metrics_20260606_020244"
+}
