@@ -1,7 +1,7 @@
 """
 Evaluate traffic-signal baselines and learned agents.
 
-Always evaluates:
+By default, evaluates:
   - Fixed-Time
   - Max Pressure
   - SOTL
@@ -11,6 +11,7 @@ Optionally evaluates:
   - SPRe+ with --dqn-model
   - Action-Constrained PPO with --ppo-model or --trained-model
 
+Use --agent to evaluate or visualize one agent at a time.
 Results are printed and saved to a unique folder.
 """
 
@@ -35,6 +36,7 @@ from sumo_rl.environement.sumo_env import SUMOEnvironment
 
 
 DEFAULT_CFG_FILE = "sumo_rl/nets/single-intersection/single_intersection.sumocfg"
+AGENT_CHOICES = ["all", "fixed-time", "max-pressure", "sotl", "dqn-ar", "spre-plus", "ppo"]
 
 
 def parse_controlled_tls(value):
@@ -76,6 +78,12 @@ def parse_args():
     parser.add_argument("--output-dir", type=str, default="results")
     parser.add_argument("--run-name", type=str, default=None)
     parser.add_argument("--use-gui", action="store_true")
+    parser.add_argument(
+        "--agent",
+        choices=AGENT_CHOICES,
+        default="all",
+        help="Evaluate all agents or exactly one selected agent.",
+    )
     parser.add_argument("--device", type=str, default="cpu")
     parser.add_argument("--dqn-model", type=str, default=None, help="Path to trained DQN-AR checkpoint.")
     parser.add_argument("--include-untrained-dqn", action="store_true", help="Evaluate untrained DQN/SPRe+ if --dqn-model is absent.")
@@ -88,10 +96,18 @@ def parse_args():
         help="Path to trained Action-Constrained PPO checkpoint.",
     )
     parser.add_argument("--spre-use-scipy", action="store_true", help="Use scipy SLSQP projection for SPRe+ if scipy is installed.")
-    return parser.parse_args()
+
+    args = parser.parse_args()
+    if args.agent == "ppo" and not args.ppo_model:
+        parser.error("--agent ppo requires --ppo-model PATH.")
+    if args.agent in {"dqn-ar", "spre-plus"} and not args.dqn_model and not args.include_untrained_dqn:
+        parser.error(f"--agent {args.agent} requires --dqn-model PATH, or --include-untrained-dqn for a smoke test.")
+    return args
 
 
-def make_env(args):
+def make_env(args, use_gui=None):
+    if use_gui is None:
+        use_gui = args.use_gui
     return SUMOEnvironment(
         sumo_cfg_file=args.sumo_cfg_file,
         delta_time=args.delta_time,
@@ -100,7 +116,7 @@ def make_env(args):
         max_green_time=args.max_green_time,
         end_time=args.sim_end_time,
         controlled_tls=parse_controlled_tls(args.controlled_tls),
-        use_gui=args.use_gui,
+        use_gui=use_gui,
         reward_mode=args.reward_mode,
         queue_reward_weight=args.queue_reward_weight,
         vehicle_wait_weight=args.vehicle_wait_weight,
@@ -136,33 +152,43 @@ def probe_dimensions(env):
 def build_experiments(args, dims):
     experiments = []
 
-    fixed = FixedTimeAgent(
-        cycle_time=args.fixed_cycle,
-        num_intersections=dims["num_intersections"],
-        action_dims=[dims["action_dim"]] * dims["num_intersections"],
-    )
-    experiments.append((
-        f"Fixed-Time ({args.fixed_cycle}s cycle)",
-        fixed,
-        lambda state, signals, agent=fixed: agent.select_action(traffic_signals=signals),
-    ))
+    def wants(agent_name):
+        return args.agent in {"all", agent_name}
 
-    max_pressure = MaxPressureAgent(num_intersections=dims["num_intersections"])
-    experiments.append((
-        "Max Pressure",
-        max_pressure,
-        lambda state, signals, agent=max_pressure: agent.select_action(signals),
-    ))
+    if wants("fixed-time"):
+        fixed = FixedTimeAgent(
+            cycle_time=args.fixed_cycle,
+            num_intersections=dims["num_intersections"],
+            action_dims=[dims["action_dim"]] * dims["num_intersections"],
+        )
+        experiments.append((
+            f"Fixed-Time ({args.fixed_cycle}s cycle)",
+            fixed,
+            lambda state, signals, agent=fixed: agent.select_action(traffic_signals=signals),
+        ))
 
-    sotl = SOTLAgent(kappa=args.sotl_kappa, num_intersections=dims["num_intersections"])
-    experiments.append((
-        f"SOTL (kappa={args.sotl_kappa})",
-        sotl,
-        lambda state, signals, agent=sotl: agent.select_action(signals),
-    ))
+    if wants("max-pressure"):
+        max_pressure = MaxPressureAgent(num_intersections=dims["num_intersections"])
+        experiments.append((
+            "Max Pressure",
+            max_pressure,
+            lambda state, signals, agent=max_pressure: agent.select_action(signals),
+        ))
+
+    if wants("sotl"):
+        sotl = SOTLAgent(kappa=args.sotl_kappa, num_intersections=dims["num_intersections"])
+        experiments.append((
+            f"SOTL (kappa={args.sotl_kappa})",
+            sotl,
+            lambda state, signals, agent=sotl: agent.select_action(signals),
+        ))
 
     dqn_agent = None
-    if args.dqn_model or args.include_untrained_dqn:
+    dqn_family_requested = (
+        args.agent in {"dqn-ar", "spre-plus"}
+        or (args.agent == "all" and (args.dqn_model or args.include_untrained_dqn))
+    )
+    if dqn_family_requested:
         dqn_agent = DQNAgent(
             state_dim=dims["state_dim"],
             action_dim=dims["action_dim"],
@@ -179,28 +205,31 @@ def build_experiments(args, dims):
             print("[WARN] Evaluating untrained DQN-AR because --include-untrained-dqn was set.")
         dqn_agent.epsilon = 0.0
         dqn_agent.epsilon_end = 0.0
-        experiments.append((
-            "DQN-AR",
-            dqn_agent,
-            lambda state, signals, agent=dqn_agent: agent.select_action(state, signals),
-        ))
 
-        spre = SPRePlusAgent(
-            action_dim=dims["action_dim"],
-            num_intersections=dims["num_intersections"],
-            use_scipy=args.spre_use_scipy,
-            state_dim=dims["state_dim"],
-        )
-        spre.set_policy(dqn_agent.get_q_fn())
-        experiments.append((
-            "SPRe+ (DQN policy)",
-            spre,
-            lambda state, signals, agent=spre: agent.select_action(state, signals),
-        ))
-    else:
+        if wants("dqn-ar"):
+            experiments.append((
+                "DQN-AR",
+                dqn_agent,
+                lambda state, signals, agent=dqn_agent: agent.select_action(state, signals),
+            ))
+
+        if wants("spre-plus"):
+            spre = SPRePlusAgent(
+                action_dim=dims["action_dim"],
+                num_intersections=dims["num_intersections"],
+                use_scipy=args.spre_use_scipy,
+                state_dim=dims["state_dim"],
+            )
+            spre.set_policy(dqn_agent.get_q_fn())
+            experiments.append((
+                "SPRe+ (DQN policy)",
+                spre,
+                lambda state, signals, agent=spre: agent.select_action(state, signals),
+            ))
+    elif args.agent == "all":
         print("[INFO] Skipping DQN-AR and SPRe+. Pass --dqn-model PATH to evaluate them.")
 
-    if args.ppo_model:
+    if wants("ppo") and args.ppo_model:
         if dims["num_intersections"] != 1:
             raise RuntimeError("The current PPO evaluation path supports one controlled traffic signal. Use --controlled-tls B1 for 3x3.")
         print(f"[INFO] Loading PPO model from {args.ppo_model}")
@@ -216,6 +245,9 @@ def build_experiments(args, dims):
             ppo,
             lambda state, signals, agent=ppo: ppo_action_fn(state, signals, agent),
         ))
+
+    if not experiments:
+        raise RuntimeError(f"No experiments were built for --agent {args.agent}. Check the requested model paths.")
 
     return experiments
 
@@ -325,7 +357,9 @@ def main():
     args = parse_args()
     run_dir = make_run_dir(args.output_dir, args.run_name)
 
-    probe_env = make_env(args)
+    # Probe dimensions headlessly so --use-gui opens one visible SUMO window only
+    # for the actual evaluation episode.
+    probe_env = make_env(args, use_gui=False)
     dims = probe_dimensions(probe_env)
     probe_env.close()
 
