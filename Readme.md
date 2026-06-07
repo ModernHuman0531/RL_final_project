@@ -1,92 +1,67 @@
-# Gemini [![Build Status](https://github.com/anishathalye/gemini/workflows/CI/badge.svg)](https://github.com/anishathalye/gemini/actions?query=workflow%3ACI)
-
-Gemini is a modern LaTeX [beamerposter] theme.
-
-<p align="center">
-<a href="https://raw.githubusercontent.com/anishathalye/assets/master/gemini/poster-gemini.pdf">
-<img src="https://raw.githubusercontent.com/anishathalye/assets/master/gemini/poster-gemini-small.png">
-</a>
-</p>
-
-If you're looking for a beamer presentation theme, take a look at [Auriga].
-
-## Dependencies
-
-* A TeX installation that includes [LuaTeX]
-    * You also need `latexmk` if you want to use the provided `Makefile`
-* LaTeX package dependencies including beamerposter (these usually come with
-  your TeX installation, but if not, you can get them from [CTAN])
-* [Raleway] and [Lato], which are both available under Open Font License
+# RL Final Project: Towards Trustworthy Smart Cities: An Explainable and Safe DRL Application for Sustainable Traffic Management
 
 ## Usage
+* Build Docker image\
+```zsh
+make build
+```
+* Run image without GUI
+```zsh
+make run
+```
+* Run image with GUI
+  1. For linux users(default)
+   Check the `.env` files, please comment the code block for window users and uncomment the code block for linux users, then just run `make run-gui`
+  2. For window users(WSL2)
+     1. Install X server: Install VcXsrv
+     2. Activate X Launch
+        1. Choose "Multiple windows"
+        2. Select "Disable access control"
+     3. WSL2 command
+        ```bash
+        export DISPLAY=$(grep nameserver /etc/resolv.conf | awk '{print $2}'):0.0
+        make run-gui
+        ```
 
-1. Copy the files in this repository (or clone the repository)
+## File Structure
+```txt
+sumo_rl/
+├── nets/          # SUMO + scenario definition
+│   ├── single_intersection/
+│   │    ├── single_intersection.nod.xml
+│   │    ├── single_intersection.edg.xml
+│   │    ├── single_intersection.con.xml
+│   │    ├── single_intersection.net.xml
+│   │    └──  single_intersection.sumocfg
+│   └── 2*2 grid/
+│
+├── environment/              
+│   └── sumo_env.py # Turn SUMO into RL problem(MDP)
+│
+├── agents/            # RL method (Learning policy + Constraint)
+│   ├── base_agent.py
+│   └── 
+├── experiments/     # Training loop
+│   ├── train.py
+│   └── 
+│
+├── settings/
+│   └── view.setting.xml # Display setting file      
+│
+└── README.md
+```
+## Net design
+### Baseline
+The baseline is simple intersection, for simplicity, we:
+* Constrain the car can only move straightly. (Use .con.xml to restrict this condition)
+* Each line have two lanes for in and out.
+* Speed limit is 50(km/h) (13.89(m/s)).
+* Only allow the center node has traffic light.
+* The project proporsal ask to be stationary poisson arrivals with a flow rate of around 300–600 vehicles/hour/lane. For simplicity, we fixed the flow rate to 360 vehicles/hour/lane. By using the probability parameter in `flow`, 360 vehicles devided by 3600 sec = 0.1 vechicle/sec, so set probability="0.1" means we have 10 percent of chance to generate a vehicle per second.
+* For pedestrian, set 180 pedestrians/hour/lane, so probability="0.05"  
+Use the following command to import the .sumocfg file into sumo-gui:
+```zsh
+sumo -c simple_intersection.sumocfg
+```
 
-1. In `poster.tex`, set up your paper size, column layout, and scale the
-   content as necessary
-
-1. Make a copy of `beamercolorthemegemini.sty`, update the `\usecolortheme`
-   line in `poster.tex`, and theme the poster to your liking (optional, but
-   highly recommended)
-
-1. Run `make` to build your poster
-
-## FAQ
-
-See the [FAQ] in the Wiki for answers to frequently asked questions such as how
-to add an institution logo to the poster.
-
-## Themes
-
-Gemini currently includes three color themes:
-
-* `gemini` (default)
-* `mit`
-* `labsix`
-
-The alternative themes are intended to be inspiration for you to make your own
-color theme. You're highly recommended to make your own color theme (it's
-really easy!) or use the default Gemini theme.
-
-### MIT theme
-
-<p align="center">
-<a href="https://raw.githubusercontent.com/anishathalye/assets/master/gemini/poster-mit.pdf">
-<img src="https://raw.githubusercontent.com/anishathalye/assets/master/gemini/poster-mit-small.png">
-</a>
-</p>
-
-### LabSix theme
-
-<p align="center">
-<a href="https://raw.githubusercontent.com/anishathalye/assets/master/gemini/poster-labsix.pdf">
-<img src="https://raw.githubusercontent.com/anishathalye/assets/master/gemini/poster-labsix-small.png">
-</a>
-</p>
-
-## Design goals
-
-* **Minimal**: clean and easy to read, so that the emphasis is on the content
-* **Batteries included**: works and looks good out of the box
-* **Easy theming**: easy to create and use a new color theme
-
-## Contributing
-
-Contributions to Gemini such as bug reports, new themes, and new poster
-components are greatly appreciated! Given the subjective nature of design,
-you're encouraged to open an issue or pull request early to get feedback before
-investing a lot of time in implementing a new feature.
-
-## License
-
-Copyright (c) 2018-2022 Anish Athalye. Released under the MIT License. See
-[LICENSE.md][license] for details.
-
-[beamerposter]: https://github.com/deselaers/latex-beamerposter
-[Auriga]: https://github.com/anishathalye/auriga
-[LuaTeX]: http://www.luatex.org/
-[CTAN]: https://ctan.org/
-[Raleway]: https://www.fontsquirrel.com/fonts/raleway
-[Lato]: https://www.fontsquirrel.com/fonts/lato
-[license]: LICENSE.md
-[FAQ]: https://github.com/anishathalye/gemini/wiki/FAQ
+For more advanced scenes, maybe we can first try to let the car can turn around or have more lanes or differ the car flow rate by time (like have the rush hour).
