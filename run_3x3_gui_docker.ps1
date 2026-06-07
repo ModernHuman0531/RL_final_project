@@ -2,6 +2,14 @@ param(
     [string]$Image = "sumo-rl:latest",
     [string]$Display = "host.docker.internal:0.0",
     [string]$Scenario = "sumo_rl/nets/3x3grid/3x3.sumocfg",
+    [ValidateSet("", "all", "fixed-time", "max-pressure", "sotl", "dqn-ar", "spre-plus", "ppo")]
+    [string]$Agent = "",
+    [string]$ControlledTls = "",
+    [string]$PpoModel = "",
+    [string]$DqnModel = "",
+    [int]$NumEpisodes = 1,
+    [int]$SimEndTime = 3600,
+    [string]$RunName = "",
     [switch]$Shell,
     [switch]$DryRun
 )
@@ -49,6 +57,28 @@ $dockerArgs = @(
 
 if ($Shell) {
     $dockerArgs += "bash"
+} elseif (-not [string]::IsNullOrWhiteSpace($Agent)) {
+    $dockerArgs += @(
+        "python3", "-m", "sumo_rl.experiments.eval_baselines",
+        "--use-gui",
+        "--agent", $Agent,
+        "--sumo-cfg-file", $Scenario,
+        "--num-episodes", "$NumEpisodes",
+        "--sim-end-time", "$SimEndTime"
+    )
+
+    if (-not [string]::IsNullOrWhiteSpace($ControlledTls)) {
+        $dockerArgs += @("--controlled-tls", $ControlledTls)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($PpoModel)) {
+        $dockerArgs += @("--ppo-model", $PpoModel)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($DqnModel)) {
+        $dockerArgs += @("--dqn-model", $DqnModel)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($RunName)) {
+        $dockerArgs += @("--run-name", $RunName)
+    }
 } else {
     $dockerArgs += @("sumo-gui", "-c", $Scenario)
 }
