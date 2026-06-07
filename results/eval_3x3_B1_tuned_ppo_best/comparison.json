@@ -1,0 +1,74 @@
+[
+  {
+    "agent": "Fixed-Time (30s cycle)",
+    "episodes": 5,
+    "avg_waiting_time": 1574.4416666666666,
+    "avg_pedestrian_waiting_time": 0.0,
+    "avg_queue_length": 79.77105555555556,
+    "avg_pedestrian_crossing_occupancy": 0.8983333333333334,
+    "violation_rate": 0.6844444444444444,
+    "total_reward": -5791190.0,
+    "steps": 3600.0,
+    "violations": 12320
+  },
+  {
+    "agent": "Max Pressure",
+    "episodes": 5,
+    "avg_waiting_time": 1381.0865,
+    "avg_pedestrian_waiting_time": 0.0,
+    "avg_queue_length": 79.64083333333335,
+    "avg_pedestrian_crossing_occupancy": 0.9003888888888889,
+    "violation_rate": 0.5761111111111112,
+    "total_reward": -5075611.4,
+    "steps": 3600.0,
+    "violations": 10370
+  },
+  {
+    "agent": "SOTL (kappa=5)",
+    "episodes": 5,
+    "avg_waiting_time": 1405.9980555555555,
+    "avg_pedestrian_waiting_time": 0.0,
+    "avg_queue_length": 80.65055555555556,
+    "avg_pedestrian_crossing_occupancy": 0.9041666666666666,
+    "violation_rate": 0.7097222222222223,
+    "total_reward": -5189343.0,
+    "steps": 3600.0,
+    "violations": 12775
+  },
+  {
+    "agent": "DQN-AR",
+    "episodes": 5,
+    "avg_waiting_time": 1350.6027777777779,
+    "avg_pedestrian_waiting_time": 0.0,
+    "avg_queue_length": 79.60805555555555,
+    "avg_pedestrian_crossing_occupancy": 0.9019444444444444,
+    "violation_rate": 0.0,
+    "total_reward": -4862170.0,
+    "steps": 3600.0,
+    "violations": 0
+  },
+  {
+    "agent": "SPRe+ (DQN policy)",
+    "episodes": 5,
+    "avg_waiting_time": 1350.6027777777779,
+    "avg_pedestrian_waiting_time": 0.0,
+    "avg_queue_length": 79.60805555555555,
+    "avg_pedestrian_crossing_occupancy": 0.9019444444444444,
+    "violation_rate": 0.0,
+    "total_reward": -4862170.0,
+    "steps": 3600.0,
+    "violations": 0
+  },
+  {
+    "agent": "Action-Constrained PPO",
+    "episodes": 5,
+    "avg_waiting_time": 1303.8708333333334,
+    "avg_pedestrian_waiting_time": 0.0,
+    "avg_queue_length": 79.77944444444445,
+    "avg_pedestrian_crossing_occupancy": 0.9225,
+    "violation_rate": 0.0,
+    "total_reward": -4693935.0,
+    "steps": 3600.0,
+    "violations": 0
+  }
+]

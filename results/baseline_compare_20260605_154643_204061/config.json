@@ -1,0 +1,41 @@
+{
+  "sumo_cfg_file": "sumo_rl/nets/3x3grid/3x3.sumocfg",
+  "controlled_tls": "B1",
+  "num_episodes": 1,
+  "sim_end_time": 60,
+  "delta_time": 1,
+  "yellow_time": 5,
+  "min_green_time": 10,
+  "max_green_time": 60,
+  "reward_mode": "waiting_time",
+  "queue_reward_weight": 1.0,
+  "vehicle_wait_weight": 1.0,
+  "pedestrian_wait_weight": 1.0,
+  "violation_penalty": 50.0,
+  "fixed_cycle": 30,
+  "sotl_kappa": 5,
+  "output_dir": "results",
+  "run_name": null,
+  "use_gui": false,
+  "device": "cpu",
+  "dqn_model": null,
+  "include_untrained_dqn": false,
+  "ppo_model": null,
+  "spre_use_scipy": false,
+  "state_dim": 31,
+  "joint_state_dim": 31,
+  "action_dim": 4,
+  "num_intersections": 1,
+  "traffic_signal_ids": [
+    "B1"
+  ],
+  "green_phases": {
+    "B1": [
+      0,
+      1,
+      3,
+      4
+    ]
+  },
+  "run_dir": "results/baseline_compare_20260605_154643_204061"
+}
