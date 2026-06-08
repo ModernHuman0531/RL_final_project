@@ -4,7 +4,7 @@
 % Content filled in for NYCU 535510 Reinforcement Learning — Speldrich, Tang, Wei (2026)
 %-------------------------------------
 
-\documentclass[final,20pt]{beamer}
+\documentclass[final,18pt]{beamer}
 
 % ====================
 % Packages
@@ -24,6 +24,8 @@
 \usepackage{xcolor}
 \usepackage[skip=2pt,font=large]{subcaption}
 \usepackage{adjustbox}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta, fit, backgrounds}
 
 \usetikzlibrary{shapes.geometric, arrows}
 
@@ -46,7 +48,7 @@
 % Title
 % ====================
 
-\title{Towards Trustworthy Smart Cities: An Explainable and Safe DRL Application for Sustainable Traffic Management}
+\title{Trustworthy Traffic Signal Control with Deep Reinforcement Learning}
 
 \author{Cheuk Hong Tang \inst{1} \and Jana Speldrich \inst{1} \and Dunkun Wei \inst{1}}
 
@@ -61,7 +63,7 @@
   \hfill
   \textbf{NYCU 535510 Reinforcement Learning}
   \hfill
-  \href{mailto:Jana.Speldrich@students.uni-mannheim.de}{\textbf{Jana.Speldrich@students.uni-mannheim.de}}}
+    }
 
 % ====================
 % Logo
@@ -88,18 +90,30 @@
 % Abstract
 % ----------------------------------
   \begin{block}{Abstract}
-    Traffic signal control in urban environments must balance vehicle throughput
-    with pedestrian safety --- a requirement that classical rule-based methods
-    cannot meet simultaneously. We present an \textbf{Action-Constrained
-    Proximal Policy Optimisation (PPO)} agent that learns adaptive signal timing
-    while enforcing hard pedestrian safety constraints through feasible-action
-    masking at every decision step. The agent is evaluated against five
-    baselines --- Fixed-Time, Max Pressure, SOTL, DQN-AR, and SPRe+ --- on a
-    single-intersection toy task and a 3$\times$3 grid network simulated in
-    SUMO. The proposed PPO agent achieves the \textbf{lowest waiting time among
-    all safe agents} and \textbf{zero constraint violations} in both scenarios,
-    while all rule-based baselines violate safety constraints in 19--71\% of
-    steps.
+Traffic signal control in urban environments requires balancing vehicle
+throughput and pedestrian safety. To address this challenge, we propose an
+\textbf{Action-Constrained Proximal Policy Optimisation (PPO)} framework that
+integrates pedestrian safety requirements through feasible-action masking
+during policy execution. The proposed method is compared with five widely used
+traffic-control baselines --- Fixed-Time, Max Pressure, SOTL, DQN-AR, and
+SPRe+ --- in both a single-intersection task and a 3$\times$3 grid network
+simulated in SUMO. Through these experiments, we examine the potential of
+safe and explainable deep reinforcement learning for trustworthy traffic
+signal control in smart-city environments.
+    \begin{figure}[H]
+    \centering
+    \subfloat[1x1 env]{
+        \includegraphics[width=0.45\textwidth]{images/1x1_env.png}
+        \label{fig:sub1}
+    }
+    \hfill % 在兩張圖之間留白並推至兩側
+    \subfloat[3x3 env]{
+        \includegraphics[width=0.45\textwidth]{images/3x3_env.png}
+        \label{fig:sub2}
+    }
+    
+    \label{fig:main_figure}
+\end{figure}
   \end{block}
 
 % ----------------------------------
@@ -130,32 +144,92 @@
     $\mathcal{C}(s)$ by removing phases that violate any hard constraint. PPO
     selects actions via a \textbf{masked softmax} restricted to $\mathcal{C}(s)$,
     so infeasible actions receive zero probability and can never be executed.
-
-    \vspace{0.6cm}
-    \begin{center}
-    \begin{tikzpicture}[node distance=2.4cm]
-      \node (sumo) [startstop]
-        {\textbf{SUMO Simulation}\\
-         Vehicle \& pedestrian arrivals (Poisson process)};
-      \node (obs)  [process, below of=sumo]
-        {\textbf{State} $s_t$ (31-dim): phase timer, vehicle density,
-         vehicle wait, pedestrian wait, crossing occupancy};
-      \node (ppo)  [process, below of=obs]
-        {\textbf{PPO Policy} $\pi_\theta$: two-layer MLP,
-         hidden dim 128, masked softmax over $\mathcal{C}(s)$};
-      \node (mask) [process, below of=ppo]
-        {\textbf{Constraint Checker}: yellow lock $\cdot$ min green 10\,s
-         $\cdot$ max green 60\,s $\cdot$ pedestrian safety};
-      \node (act)  [startstop, below of=mask]
-        {\textbf{Action Execution}: selected phase $\to$ SUMO via TraCI,
-         reward $r_t = -(\alpha W_t^v + \beta W_t^p)$ computed};
-      \draw [arrow] (sumo) -- (obs);
-      \draw [arrow] (obs)  -- (ppo);
-      \draw [arrow] (ppo)  -- (mask);
-      \draw [arrow] (mask) -- (act);
-      \draw [arrow] (act.east) -- ++(4cm,0) |- (sumo.east);
+    \begin{tikzpicture}[
+        % ── 節點樣式 ────────────────────────────────────────
+        node distance = 1.6cm and 2.4cm,
+        box/.style = {
+            rectangle, rounded corners=4pt,
+            draw, thick,
+            minimum width=3.0cm, minimum height=0.9cm,
+            align=center, font=\small
+        },
+        bluebox/.style  = {box, fill=blue!10,  draw=blue!60!black},
+        greenbox/.style = {box, fill=green!10, draw=green!60!black},
+        orangebox/.style= {box, fill=orange!10,draw=orange!60!black},
+        redbox/.style   = {box, fill=red!10,   draw=red!60!black},
+        graybox/.style  = {box, fill=gray!10,  draw=gray!60!black},
+        % ── 箭頭樣式 ────────────────────────────────────────
+        arr/.style  = {-{Stealth[length=6pt]}, thick},
+        darr/.style = {arr, dashed, gray},
+    ]
+     
+    % ── 節點 ──────────────────────────────────────────────────────
+    \node[bluebox]  (state)   {$s_t$\\State};
+     
+    \node[redbox,   below left=of state]  (cc)
+        {Constraint Checker\\$\mathcal{M}(s_t) \in \{0,1\}^{|\mathcal{A}|}$};
+     
+    \node[greenbox, below right=of state] (ppo)
+        {PPO Policy\\$\pi_\theta(a \mid s_t)$};
+     
+    \node[orangebox, below right=of cc]   (mask)
+        {Masked Softmax\\$\tilde{\pi}(a) \propto \pi_\theta(a)\cdot\mathcal{M}(s_t)$};
+     
+    \node[bluebox,  below=1.4cm of mask]  (action)
+        {Safe Action $a_t$};
+     
+    \node[graybox,  below=1.4cm of action](sumo)
+        {SUMO Environment};
+     
+    \node[bluebox,  below=1.4cm of sumo]  (next)
+        {$s_{t+1},\; r_t$};
+     
+    % ── 右側 PPO update 標籤 ────────────────────────────────────
+    \node[greenbox, right=2.6cm of mask]  (update)
+        {PPO Update\\$\nabla_\theta \mathcal{L}^{\text{CLIP}}$};
+     
+    % ── 箭頭 ──────────────────────────────────────────────────────
+    % state → cc, ppo
+    \draw[arr] (state.south west) -- (cc.north);
+    \draw[arr] (state.south east) -- (ppo.north);
+     
+    % cc, ppo → masked softmax
+    \draw[arr] (cc.south east)  -- (mask.north west);
+    \draw[arr] (ppo.south west) -- (mask.north east);
+     
+    % masked softmax → action → sumo → next
+    \draw[arr] (mask)   -- (action);
+    \draw[arr] (action) -- node[right, font=\small]{step()} (sumo);
+    \draw[arr] (sumo)   -- (next);
+     
+    % next → state (loop back，左側)
+    \draw[arr] (next.west) -- ++(-4.2,0)
+               |- node[left, font=\small, pos=0.25]{next episode} (state.west);
+     
+    % next → ppo update（右側）
+    \draw[darr] (next.east) -- ++(1.2,0)
+                |- node[right, font=\small, pos=0.25]{rollout buffer} (update.south);
+     
+    % ppo update → policy（右側回饋）
+    \draw[darr] (update.north) -- ++(0,0.6)
+                -| node[above, font=\small, pos=0.25]{$\theta \leftarrow \theta + \Delta\theta$}
+                   (ppo.east);
+     
+    % ── 背景框：Constraint-Masked Action Selection ───────────────
+    \begin{scope}[on background layer]
+        \node[
+            draw=orange!70, dashed, thick,
+            fill=orange!4,
+            rounded corners=6pt,
+            fit=(cc)(ppo)(mask),
+            inner sep=10pt,
+            label={[font=\small\itshape, orange!80!black]above:Constraint-Masked Action Selection}
+        ] {};
+    \end{scope}
+     
     \end{tikzpicture}
-    \end{center}
+
+
 
   \end{block}
 
@@ -172,24 +246,29 @@
       \textbf{Parameter} & \textbf{1$\times$1 Scenario} & \textbf{3$\times$3 Scenario} \\
       \midrule
       Network topology    & Single 4-way intersection & 3$\times$3 grid \\
-      Controlled TLS      & 1                         & B1 (centre node) \\
+      Controlled TLS      & 1                         & B1 (center node) \\
       Simulation length   & 3\,600\,s                 & 3\,600\,s \\
       Training episodes   & 100                       & 100 \\
       Evaluation episodes & 5                         & 5 \\
-      State dimension     & 31                        & 31 \\
-      Action space        & 4 phases                  & 4 phases \\
+      State dimension     & 21                        & 31 \\
+      Action space        & 2 phases                  & 4 phases \\
       \bottomrule
     \end{tabular}
     \end{center}
 
     \vspace{0.4cm}
-    \heading{PPO Hyperparameters}
-
-    lr $3\!\times\!10^{-4}$,\; entropy coef.\ $0.01$,\; update epochs $3$,\;
-    batch size $64$,\; $\gamma\!=\!0.99$,\; $\lambda_\text{GAE}\!=\!0.95$,\;
-    clip $\varepsilon\!=\!0.2$,\; hidden dim $128$.
-
   \end{block}
+
+
+
+\end{column}
+
+\separatorcolumn
+
+% ============================================================
+% RIGHT COLUMN
+% ============================================================
+\begin{column}{\colwidth}
 
 % ----------------------------------
 % Agents & Baselines
@@ -209,16 +288,6 @@
         $\mathcal{C}(s)$. Learns safe behaviour during training.
     \end{itemize}
   \end{block}
-
-\end{column}
-
-\separatorcolumn
-
-% ============================================================
-% RIGHT COLUMN
-% ============================================================
-\begin{column}{\colwidth}
-
 % ----------------------------------
 % Results
 % ----------------------------------
@@ -267,72 +336,35 @@
     \end{tabular}
     \end{center}
 
-    \vspace{0.6cm}
-    \heading{Key Findings}
-    \begin{itemize}
-      \item PPO reduces average vehicle wait by \textbf{44\%} vs.\ Fixed-Time
-        (1$\times$1) and \textbf{20\%} vs.\ Fixed-Time (3$\times$3).
-      \item The only agent with lower wait than PPO in 1$\times$1 (Max Pressure,
-        55.6\,s) violates safety in \textbf{53.5\% of steps} --- unsuitable for
-        deployment.
-      \item All three learned agents achieve \textbf{0\% violations}; all
-        rule-based baselines violate in \textbf{19--71\% of steps}.
-      \item PPO's advantage shrinks in 3$\times$3 ($-$6.4\% vs.\ Max Pressure)
-        vs.\ 1$\times$1 ($-$16\% vs.\ SOTL), consistent with a
-        partially-controlled 9-intersection network.
-    \end{itemize}
+\vspace{0.3cm}
+\heading{Key Findings}
+\begin{itemize}
+  \item \textbf{High Efficiency}: PPO reduces vehicle wait times by \textbf{8.46\%} (1$\times$1) and \textbf{4.38\%} (3$\times$3) compared to DQN-AR.
+  \item \textbf{Guaranteed Safety}: Learned agents achieve \textbf{0\% violations}. In contrast, rule-based heuristics violate safety rules in \textbf{19--71\%} of steps (e.g., Max Pressure at 53.5\%).
+  \item \textbf{Network Scalability}: In the partially-controlled 3$\times$3 grid, PPO maintains a strong lead over Fixed-Time, narrowing the gap to Max Pressure ($-$6.4\%).
+\end{itemize}
 
   \end{block}
 
 % ----------------------------------
-% Conclusions
+% Comprehensive Conclusions
 % ----------------------------------
-  \begin{block}{Conclusions}
-    \begin{itemize}
-      \item Action-constrained PPO achieves the \textbf{best safety--efficiency
-        trade-off}: lowest waiting time among safe agents, zero violations by
-        construction.
-      \item Feasible-action masking during training eliminates the post-hoc
-        projection overhead of SPRe+ and the resampling loop of DQN-AR.
-      \item DQN-AR and SPRe+ yield identical results here (small action space);
-        they would diverge in larger networks where QP cost becomes a bottleneck.
-      \item 100 episodes suffice for 1$\times$1; the 3$\times$3 policy had not
-        fully converged --- longer training would widen the gap over baselines.
-      \item Future work: full 9-intersection multi-agent control, multi-seed
-        statistical evaluation, transfer to real intersection data.
-    \end{itemize}
-  \end{block}
+\begin{block}{Conclusions \& Key Contributions}
+  \begin{itemize}
+    \item \textbf{Addressing Benchmark Limitations}: 
+      While traditional heuristics like \textit{Max Pressure} and \textit{SOTL} are vehicle-centric and lack pedestrian safety, and state-of-the-art \textit{SPRe+} guarantees zero violations but suffers from high computation cost (QP projection overhead), our approach bridges these gaps.
+      
+    \item \textbf{Optimal Safety--Efficiency Trade-off}: 
+      The proposed \textbf{Action-constrained PPO} achieves the lowest waiting time among safe agents with zero pedestrian-safety violations guaranteed by construction.
+      
+    \item \textbf{Eliminated Computational Overhead}: 
+      By enforcing feasible-action masking during training, our method completely eliminates the post-hoc projection overhead of SPRe+ and the resampling loops of DQN-AR, ensuring scalability for larger networks.
+      
+    \item \textbf{Scalability \& Future Horizons}: 
+      Longer training is expected to further widen the performance gap in complex $3\times3$ grids. Future steps include full 9-intersection multi-agent control and evaluation on real-world empirical data.
+  \end{itemize}
+\end{block}
 
-% ----------------------------------
-% Related Work
-% ----------------------------------
-  \begin{exampleblock}{What Is Already Known About This Subject?}
-    \begin{itemize}
-      \item \textbf{Max Pressure} provides a throughput-optimal
-        non-learning upper bound but is vehicle-centric with no pedestrian safety.
-      \item \textbf{SOTL} achieves effective decentralised
-        reactive control without training, widely used as a benchmark heuristic.
-      \item \textbf{SPRe+ } is the state-of-the-art
-        action-constrained RL method via QP projection; guarantees zero violations
-        but incurs quadratic per-step cost as the action space grows.
-    \end{itemize}
-  \end{exampleblock}
-
-% ----------------------------------
-% Practical Implications
-% ----------------------------------
-  \begin{exampleblock}{Practical Implications}
-    \begin{itemize}
-      \item \textbf{Hardware compatibility:} Zero violations mean the agent never
-        requests an illegal phase transition --- directly compatible with real
-        controllers enforcing minimum green times.
-      \item \textbf{Scalability:} Feasible-action masking scales linearly with
-        the number of phases, unlike QP-based methods (quadratic cost).
-      \item \textbf{Pedestrian safety guarantee:} Incorporating pedestrian state
-        into $\mathcal{C}(s)$ gives a structural guarantee that reward shaping
-        or post-hoc filtering alone cannot match.
-    \end{itemize}
-  \end{exampleblock}
 
 % ----------------------------------
 % References

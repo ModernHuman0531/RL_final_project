@@ -33,7 +33,7 @@ sumo_rl/
 │   │    ├── single_intersection.con.xml
 │   │    ├── single_intersection.net.xml
 │   │    └──  single_intersection.sumocfg
-│   └── 2*2 grid/
+│   └── 3x3 grid/
 │
 ├── environment/              
 │   └── sumo_env.py # Turn SUMO into RL problem(MDP)
