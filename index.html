@@ -4,13 +4,13 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
-  <meta name="title" content="Towards Trustworthy Smart Cities - Tang, Speldrich, Wei">
+  <meta name="title" content="Trustworthy Traffic Signal Control with Deep Reinforcement Learning - Tang, Speldrich, Wei">
   <meta name="description" content="Action-Constrained PPO for safe traffic signal control: zero pedestrian safety violations with the lowest vehicle waiting time among all safe agents in SUMO.">
   <meta name="keywords" content="reinforcement learning, traffic signal control, safe RL, action constraints, PPO, SUMO, smart cities, pedestrian safety">
   <meta name="author" content="Cheuk Hong Tang, Jana Speldrich, Dunkun Wei">
   <meta name="robots" content="index, follow">
 
-  <title>Towards Trustworthy Smart Cities | NYCU RL 2026</title>
+  <title>Trustworthy Traffic Signal Control with Deep Reinforcement Learning | NYCU RL 2026</title>
 
   <link rel="icon" type="image/x-icon" href="static/images/favicon.ico">
 
@@ -63,7 +63,7 @@
         <div class="column has-text-centered">
 
           <h1 class="title is-2 publication-title">
-            Towards Trustworthy Smart Cities: An Explainable and Safe DRL Application for Sustainable Traffic Management
+            Trustworthy Traffic Signal Control with Deep Reinforcement Learning
           </h1>
 
           <div class="is-size-5 publication-authors">
@@ -119,20 +119,15 @@
         <h2 class="title is-3">Abstract</h2>
         <div class="content has-text-justified">
           <p>
-            Traffic signal control in urban environments must balance vehicle throughput
-            with pedestrian safety &mdash; a requirement that classical rule-based methods
-            cannot meet simultaneously. We present an <strong>Action-Constrained
-            Proximal Policy Optimisation (PPO)</strong> agent that learns adaptive signal timing
-            while enforcing hard pedestrian safety constraints through feasible-action
-            masking at every decision step. The constraint checker computes the feasible
-            action set <em>C(s)</em> at each step, and the policy selects only from safe phases
-            via masked softmax, so infeasible actions receive zero probability and can never
-            be executed. The agent is evaluated against five baselines &mdash; Fixed-Time,
-            Max Pressure, SOTL, DQN-AR, and SPRe+ &mdash; on a single-intersection toy task
-            and a 3&times;3 grid network simulated in SUMO. The proposed PPO agent achieves
-            the <strong>lowest waiting time among all safe agents</strong> and
-            <strong>zero constraint violations</strong> in both scenarios, while all
-            rule-based baselines violate safety constraints in 19&ndash;71% of steps.
+            Traffic signal control in urban environments requires balancing vehicle throughput
+            and pedestrian safety. To address this challenge, we propose an <strong>Action-Constrained
+            Proximal Policy Optimisation (PPO)</strong> framework that integrates pedestrian safety
+            requirements through feasible-action masking during policy execution. The proposed
+            method is compared with five widely used traffic-control baselines &mdash; Fixed-Time,
+            Max Pressure, SOTL, DQN-AR, and SPRe+ &mdash; in both a single-intersection task and a
+            3&times;3 grid network simulated in SUMO. Through these experiments, we examine the
+            potential of safe and explainable deep reinforcement learning for trustworthy traffic
+            signal control in smart-city environments.
           </p>
         </div>
       </div>
@@ -155,9 +150,10 @@
         phases can never be executed &mdash; not by reward penalty, but by construction.
       </p>
       <p>
-        The state vector (31 dimensions) encodes: current phase index and phase timer,
-        per-lane vehicle density and waiting time, and per-crossing pedestrian waiting
-        time and occupancy. The reward is <em>r<sub>t</sub> = &minus;(&alpha; W<sub>t</sub><sup>v</sup>
+        The state vector encodes: current phase index and phase timer, per-lane vehicle
+        density and waiting time, and per-crossing pedestrian waiting time and occupancy
+        (21 dimensions in the 1&times;1 scenario; 31 in the 3&times;3 scenario).
+        The reward is <em>r<sub>t</sub> = &minus;(&alpha; W<sub>t</sub><sup>v</sup>
         + &beta; W<sub>t</sub><sup>p</sup>)</em>, penalising both vehicle and pedestrian waiting.
       </p>
       <p>
@@ -172,6 +168,33 @@
   </div>
 </section>
 
+
+<!-- ===================== EXPERIMENTAL SETUP ===================== -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 has-text-centered">Experimental Setup</h2>
+    <div style="overflow-x:auto;">
+    <table class="results-table">
+      <thead>
+        <tr>
+          <th>Parameter</th>
+          <th>1&times;1 Scenario</th>
+          <th>3&times;3 Scenario</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>Network topology</td><td>Single 4-way intersection</td><td>3&times;3 grid</td></tr>
+        <tr><td>Controlled TLS</td><td>1</td><td>B1 (centre node)</td></tr>
+        <tr><td>Simulation length</td><td>3,600 s</td><td>3,600 s</td></tr>
+        <tr><td>Training episodes</td><td>100</td><td>100</td></tr>
+        <tr><td>Evaluation episodes</td><td>5</td><td>5</td></tr>
+        <tr><td>State dimension</td><td>21</td><td>31</td></tr>
+        <tr><td>Action space</td><td>2 phases</td><td>4 phases</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
 
 <!-- ===================== RESULTS ===================== -->
 <section class="section hero is-light">
@@ -296,15 +319,29 @@
     <div class="content" style="margin-top:1.5rem;">
       <h4>Key Findings</h4>
       <ul>
-        <li>PPO reduces average vehicle wait by <strong>44%</strong> vs. Fixed-Time (1&times;1) and <strong>20%</strong> vs. Fixed-Time (3&times;3).</li>
-        <li>The only agent with lower raw wait than PPO in 1&times;1 (Max Pressure, 55.6 s) violates safety in <strong>53.5% of steps</strong> &mdash; unsafe for deployment.</li>
-        <li>All three learned agents achieve <strong>exactly 0% violations</strong>; all rule-based baselines violate in <strong>19&ndash;71% of steps</strong>.</li>
-        <li>PPO's advantage shrinks in 3&times;3 (&minus;6.4% vs. Max Pressure) vs. 1&times;1 (&minus;16% vs. SOTL), consistent with the increased difficulty of a partially-controlled 9-intersection network.</li>
+        <li><strong>High Efficiency:</strong> PPO reduces vehicle wait times by <strong>8.46%</strong> (1&times;1) and <strong>4.38%</strong> (3&times;3) compared to DQN-AR.</li>
+        <li><strong>Guaranteed Safety:</strong> Learned agents achieve <strong>0% violations</strong>. Rule-based heuristics violate safety rules in <strong>19&ndash;71%</strong> of steps (e.g., Max Pressure at 53.5%).</li>
+        <li><strong>Network Scalability:</strong> In the partially-controlled 3&times;3 grid, PPO maintains a strong lead over Fixed-Time, narrowing the gap to Max Pressure (&minus;6.4%).</li>
       </ul>
     </div>
   </div>
 </section>
 
+
+<!-- ===================== CONCLUSIONS ===================== -->
+<section class="section">
+  <div class="container is-max-desktop">
+    <h2 class="title is-3 has-text-centered">Conclusions &amp; Key Contributions</h2>
+    <div class="content">
+      <ul>
+        <li><strong>Addressing Benchmark Limitations:</strong> While traditional heuristics like Max Pressure and SOTL are vehicle-centric and lack pedestrian safety, and state-of-the-art SPRe+ guarantees zero violations but suffers from high computation cost (QP projection overhead), our approach bridges these gaps.</li>
+        <li><strong>Optimal Safety&ndash;Efficiency Trade-off:</strong> The proposed Action-Constrained PPO achieves the lowest waiting time among safe agents with zero pedestrian-safety violations guaranteed by construction.</li>
+        <li><strong>Eliminated Computational Overhead:</strong> By enforcing feasible-action masking during training, our method completely eliminates the post-hoc projection overhead of SPRe+ and the resampling loops of DQN-AR, ensuring scalability for larger networks.</li>
+        <li><strong>Scalability &amp; Future Horizons:</strong> Longer training is expected to further widen the performance gap in complex 3&times;3 grids. Future steps include full 9-intersection multi-agent control and evaluation on real-world empirical data.</li>
+      </ul>
+    </div>
+  </div>
+</section>
 
 <!-- ===================== POSTER ===================== -->
 <section class="hero is-small is-light" style="padding-top:2rem;">
@@ -324,8 +361,7 @@
   <div class="container is-max-desktop content">
     <h2 class="title">BibTeX</h2>
     <pre><code>@misc{tang2026trustworthy,
-  title   = {Towards Trustworthy Smart Cities: An Explainable and Safe {DRL}
-             Application for Sustainable Traffic Management},
+  title   = {Trustworthy Traffic Signal Control with Deep Reinforcement Learning},
   author  = {Tang, Cheuk Hong and Speldrich, Jana and Wei, Dunkun},
   year    = {2026},
   note    = {NYCU 535510 Reinforcement Learning course project},
