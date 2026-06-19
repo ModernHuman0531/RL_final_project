@@ -65,3 +65,18 @@ sumo -c simple_intersection.sumocfg
 ```
 
 For more advanced scenes, maybe we can first try to let the car can turn around or have more lanes or differ the car flow rate by time (like have the rush hour).
+
+## Demo videos
+### 1x1 baseline
+<video src="videos/base_1x1.mp4" controls="controls" style="max-width: 100%;">
+</video>
+
+<video src="videos/base_3x3.mp4" controls="controls" style="max-width: 100%;">
+</video>
+
+<video src="videos/PPO_1x1.mp4" controls="controls" style="max-width: 100%;">
+</video>
+
+
+<video src="videos/PPO_Best_Model_3x3.mp4" controls="controls" style="max-width: 100%;">
+</video>
